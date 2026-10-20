@@ -19,7 +19,7 @@
 #   intentos [ft_xxx]: intentos en marcha o versiones guardadas.
 #   menu [ft_xxx]: vim y el menú juntos en tmux. tui: solo el menú.
 #   cabecera [ft_xxx ...]: rehace la cabecera con el «43».
-#   historial [ft_xxx], lista, reset, help.
+#   historial [ft_xxx], lista, reset [todo], help.
 
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 COUNTS="$SCRIPT_DIR/.libft_counts"
@@ -1319,7 +1319,19 @@ case "$1" in
 		echo "⏹ Cronómetro de $name cancelado$([ "$exam" = 1 ] && echo " (y el examen)"):" \
 			"el tiempo no se guarda."
 		echo "$name.c sigue en su sitio. El cronómetro vuelve con el próximo intento." ;;
-	reset) rm -f "$COUNTS"; echo "Contador de sugerencias a cero." ;;
+	reset)
+		[ -z "$2" ] && { rm -f "$COUNTS"; echo "Contador de sugerencias a cero."; exit 0; }
+		[ "$2" != todo ] && { echo "Uso: $0 reset [todo]"; exit 1; }
+		# Borra el progreso, no el código: ft_*.c e intentos/ están en la
+		# carpeta actual, que podría ser tu libft real.
+		if [ -t 0 ]; then
+			read -rp "¿Borrar historial, tiempos, sugerencias e intentos en marcha? (s/n) " ok
+			[[ "$ok" =~ ^[sSyY]$ ]] || { echo "No se ha borrado nada."; exit 0; }
+		fi
+		rm -f "$COUNTS" "$HISTORY" "$ATTEMPTS" "$LAST" "$AUTOPAUSE"
+		touch "$COUNTS" "$HISTORY" "$ATTEMPTS"
+		echo "Todo a cero: historial, tiempos, sugerencias e intentos en marcha."
+		echo "Tus ft_*.c e intentos/ siguen en su sitio." ;;
 	help|-h|--help) cat "$SCRIPT_DIR/docs/manual.md" ;;
 	test)
 		check_setup test || exit 1

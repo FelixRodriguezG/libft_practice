@@ -82,6 +82,8 @@ STACK_BELOW = 100
 # Órdenes cuya salida se lee desde el principio, no desde el final.
 PINNED = ("tip", "nota", "casos", "progreso", "intentos", "man",
           "preparado", "modos")
+# Órdenes de consulta que empiezan con la salida limpia.
+CLEAN = ("tip", "man", "casos", "nota", "obsidian")
 
 # Colores de cada fila del «43», como el degradado del logo de 42.
 LOGO_COLORS = (6, 6, 4, 4, 5, 5, 5)
@@ -487,6 +489,8 @@ class App:
         for name in tests:
             self.tested_at[name] = self.mtimes.get(name, 0)
         stamp = datetime.now().strftime("%H:%M:%S")
+        if args[:1] and args[0] in CLEAN:
+            self.clear_output()
         self.add_line([])
         self.add_line([(f"── {title} · {stamp} ", CYAN, True)])
         self.scroll = 0
@@ -798,6 +802,12 @@ class App:
                  "El historial y los tiempos no se tocan.",
                  lambda: self.enqueue(["reset"], "reset") or True)
 
+    def reset_all(self):
+        self.ask("¿Borrar TODO el progreso: historial, tiempos, sugerencias e "
+                 "intentos en marcha? No se puede deshacer. Tus ft_*.c e "
+                 "intentos/ se quedan.",
+                 lambda: self.enqueue(["reset", "todo"], "reset todo") or True)
+
     def quit(self):
         if self.proc:
             self.ask("Hay un trabajo en marcha. ¿Salir?",
@@ -910,8 +920,13 @@ class App:
         g = "Menú"
         add(g, "c", "Limpiar la salida", "", self.clear_output)
         add(g, "0", "Poner a cero las sugerencias",
-            "Cuántas veces ha salido cada función (solo informativo). No "
-            "borra el historial ni los tiempos.", self.reset_counter)
+            "Cuántas veces ha salido cada función. Las que salieron y no "
+            "testeaste vuelven a salir más. No borra el historial ni los "
+            "tiempos.", self.reset_counter)
+        add(g, "R", "Empezar desde cero",
+            "Borra el historial, los tiempos, las sugerencias y los intentos "
+            "en marcha: el progreso y «¿Preparado?» vuelven a empezar. Tu "
+            "código (ft_*.c e intentos/) no se toca.", self.reset_all)
         add(g, "C", "Cambiar la paleta de colores",
             f"Ahora: {self.palette}. Pasa a la siguiente: "
             f"{' → '.join(PALETTES)}. Se recuerda para la próxima vez.",

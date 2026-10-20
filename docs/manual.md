@@ -34,6 +34,7 @@ del subject. Las pistas salen de tus notas de Obsidian.
 ./libft_43.sh cabecera [ft_xxx…] # rehace la cabecera con el «43» (sin nombres: todas)
 ./libft_43.sh lista            # parte, nombre, veces sugerida y estado
 ./libft_43.sh reset            # pone a cero las veces que ha salido cada función
+./libft_43.sh reset todo       # borra todo el progreso y empiezas desde cero
 ./libft_43.sh help             # esta ayuda (también -h o --help)
 ```
 
@@ -169,6 +170,7 @@ vídeo inverso.
 | | `M` | Modos de resolución: práctica, examen y sin cronómetro |
 | | `p` / `H` | Progreso de las 43 / historial completo |
 | Menú | `c` / `0` | Limpiar la salida / poner a cero las sugerencias (pide confirmación) |
+| | `R` | Empezar desde cero: borra todo el progreso (pide confirmación) |
 | | `C` | Cambiar la paleta de colores: 42, ámbar, violeta |
 | | `q` / `Q` | Salir del menú / cerrar vim y el menú a la vez (guarda lo de vim) |
 | | `espacio` / `?` | Acciones / ayuda |
@@ -221,8 +223,9 @@ Para el repaso se usa **repetición espaciada**: cada día distinto en que
 la resuelves bien seguido, el siguiente repaso se aleja: 1, 3, 7, 14, 30 y
 60 días. Si un test falla, la cuenta vuelve a empezar.
 
-Ya no hay límite de sugerencias: el contador (`.libft_counts`) solo es
-informativo y `reset` lo pone a cero.
+Ya no hay límite de sugerencias. El contador (`.libft_counts`) se usa
+para que las funciones que nunca han salido salgan más que las que salieron
+y no testeaste; `reset` lo pone a cero.
 
 ### El archivo
 
@@ -532,8 +535,10 @@ Cada vez que testeas una función, el resultado se guarda en
 ./libft_43.sh historial ft_strlen    # solo una función
 ```
 
-`reset` no borra el historial. Para borrarlo: `rm .libft_historial` (el
-progreso y la elección de funciones vuelven a empezar).
+`reset` no borra el historial. Para empezar desde cero, `reset todo` (o
+`R` en el menú) borra el historial, los tiempos, las sugerencias y los
+intentos en marcha. Tus `ft_*.c` e `intentos/` se quedan: están en la
+carpeta actual, que podría ser tu libft real.
 
 ## Qué archivos toca el script
 
