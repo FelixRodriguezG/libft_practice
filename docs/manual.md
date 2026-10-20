@@ -579,6 +579,9 @@ qué y no sigue.
 ## Requisitos
 
 `bash`, `cc`, `clang++`, `ar`, `nm`, `valgrind`, `python3` y `man`; `tmux`
-y `vim` para `menu`; `pdftotext` (opcional) para la ficha del subject; y
+y `vim` para `menu`; `pdftotext` (opcional) para la ficha del subject;
+`rich` (opcional, `pip install --user rich`) para ver las notas con
+formato completo (tablas, listas, enlaces; sin él se ven con un formato
+más sencillo); y
 `norminette` (si no está instalada, el test sigue funcionando y pone
 `norma no comprobada`). En los ordenadores de 42 Barcelona suele estar todo instalado.

@@ -731,8 +731,12 @@ find_note() {
 #   full: la nota entera · casos: la sección $3 de la nota de casos límite
 #   subject: prototipo y lo que dice el subject (vale en examen)
 show_note() {
-	awk -v mode="$2" -v fname="$3" '
-	function plain(s,   m) {
+	local md=0
+	python3 -c 'import rich' 2> /dev/null && md=1
+	# Con md=1 el awk solo recorta la nota y convierte lo propio de
+	# Obsidian a markdown normal; el formato lo pone md_terminal.py.
+	awk -v mode="$2" -v fname="$3" -v md="$md" '
+	function links(s,   m) {
 		gsub(/<br>/, " ", s)
 		while (match(s, /\[\[[^]|]*\|[^]]*\]\]/)) {
 			m = substr(s, RSTART + 2, RLENGTH - 4)
@@ -742,6 +746,10 @@ show_note() {
 		while (match(s, /\[\[[^]]*\]\]/))
 			s = substr(s, 1, RSTART - 1) substr(s, RSTART + 2, RLENGTH - 4) \
 				substr(s, RSTART + RLENGTH)
+		return s
+	}
+	function plain(s) {
+		s = links(s)
 		while (match(s, /\*\*[^*]+\*\*/))
 			s = substr(s, 1, RSTART - 1) "\033[1m" \
 				substr(s, RSTART + 2, RLENGTH - 4) "\033[22m" \
@@ -751,6 +759,7 @@ show_note() {
 	# El texto entre comillas invertidas es código: se aparta antes de
 	# dar formato al resto y se vuelve a poner en amarillo y sin tocar.
 	function inline(s,   code, n, i, mark, at) {
+		if (md) return links(s)
 		n = 0
 		while (match(s, /`[^`]+`/)) {
 			code[++n] = substr(s, RSTART + 1, RLENGTH - 2)
@@ -785,34 +794,45 @@ show_note() {
 		line = $0
 		quoted = sub(/^> ?/, "", line)
 		if (!quoted) { type = ""; skip = 0 }
-		bar = quoted ? "\033[" ((type in color) ? color[type] : 34) "m│\033[0m " : ""
+		bar = !quoted ? "" : md ? "> " \
+			: "\033[" ((type in color) ? color[type] : 34) "m│\033[0m "
 	}
-	line ~ /^```/ { code = !code; next }
-	code { emit(bar "    \033[36m" line "\033[0m"); next }
+	line ~ /^```/ { code = !code; if (md) emit(bar line); next }
+	code { emit(md ? bar line : bar "    \033[36m" line "\033[0m"); next }
 	!quoted && mode == "casos" && line ~ /^##/ {
 		incasos = (line == "### " fname)
 		if (incasos)
-			print "\033[1;36m🧪 Casos límite de " fname "\033[0m"
+			print md ? "# 🧪 Casos límite de " fname \
+				: "\033[1;36m🧪 Casos límite de " fname "\033[0m"
 		next
 	}
 	!quoted && /^# / {
 		section = "resumen"
-		if (mode == "full") print "\033[1;36m" substr(line, 3) "\033[0m"
+		if (mode == "full") print md ? line : "\033[1;36m" substr(line, 3) "\033[0m"
 		next
 	}
-	!quoted && /^## / { section = substr(line, 4); emit("\n\033[1;36m── " section "\033[0m"); next }
-	!quoted && /^### / { emit("\033[1m" substr(line, 5) "\033[0m"); next }
+	!quoted && /^## / {
+		section = substr(line, 4)
+		emit(md ? "\n" line "\n" : "\n\033[1;36m── " section "\033[0m")
+		next
+	}
+	!quoted && /^### / { emit(md ? "\n" line "\n" : "\033[1m" substr(line, 5) "\033[0m"); next }
 	quoted && match(line, /^\[![a-z]+\][-+]? ?/) {
 		type = substr(line, 3, index(line, "]") - 3)
 		if (mode == "casos" && type == "example") { skip = 1; next }
 		c = (type in color) ? color[type] : 34
-		emit("\033[1;" c "m" icon[type] " " inline(substr(line, RLENGTH + 1)) "\033[0m")
+		if (md) {
+			# Salto de línea forzado (una «\» al final) tras el título, para que el texto
+			# empiece debajo y no en la misma línea.
+			t = inline(substr(line, RLENGTH + 1))
+			emit((t == "" ? "> " icon[type] : "> **" icon[type] " " t "**") "\\")
+		} else emit("\033[1;" c "m" icon[type] " " inline(substr(line, RLENGTH + 1)) "\033[0m")
 		next
 	}
 	section == "resumen" && line ~ /^\[\[/ { next }
 	mode == "casos" && line ~ /^(Nota: |---$)/ { next }
 	{ emit(bar inline(line)) }
-	' "$1" | cat -s
+	' "$1" | if [ "$md" = 1 ]; then python3 "$SCRIPT_DIR/scripts/md_terminal.py"; else cat -s; fi
 }
 
 # Cabecera de 42 para los archivos nuevos, para que pasen la norminette.

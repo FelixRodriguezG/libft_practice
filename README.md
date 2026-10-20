@@ -44,8 +44,9 @@ preparado.
    ```
 3. `bash`, `cc`, `clang++`, `valgrind`, `norminette`, `python3`, `tmux` y
    `vim`. En los ordenadores de 42 Barcelona suele estar todo instalado.
-   Opcional: `pdftotext` (para la ficha del subject) y Obsidian (para leer
-   las notas).
+   Opcional: `pdftotext` (para la ficha del subject), Obsidian (para leer
+   las notas) y `rich` (`pip install --user rich`: las notas se ven con
+   tablas, listas y enlaces bien formateados).
 
 ## Instalación
 
