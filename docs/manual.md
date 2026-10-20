@@ -176,7 +176,7 @@ vídeo inverso.
 | | `espacio` / `?` | Acciones / ayuda |
 | Moverse | `↑↓` `jk` | Elegir archivo |
 | | `RePág` `AvPág` `Inicio` `Fin` | Desplazar la salida |
-| | `↑↓` `jk` con una nota larga | Desplazar la nota (pista, man, nota, progreso…) línea a línea; `Esc` devuelve las flechas a los archivos |
+| | `Tab` con una salida larga | Pasa las flechas a la salida: `↑↓` `jk` la desplazan línea a línea; `Tab` (o `Esc`) las devuelve a los archivos. Al abrir una nota, pista, man o progreso que no cabe, ya empiezan en la salida |
 
 Solo necesita Python 3 (usa `curses`, que viene incluido). El aviso del
 auto-test usa `notify-send`; si no está, solo suena un pitido cuando falla.

@@ -321,7 +321,7 @@ class App:
         self.scroll = 0             # filas desde el final (0 = seguir)
         self.pin_line = None        # línea que se mantiene arriba (notas)
         # Leyendo una nota que no cabe: ↑↓ desplazan la salida, no la
-        # lista de archivos. Esc (o la siguiente orden) lo quita.
+        # lista de archivos. Tab alterna; Esc (o la siguiente orden) lo quita.
         self.reading = False
         self.can_scroll = False     # la salida no cabe en su panel
         self.lock = threading.Lock()
@@ -1232,7 +1232,9 @@ class App:
             pinned = sum(len(wrap(segs, width - 1))
                          for segs in lines[self.pin_line:])
             self.scroll = max(0, pinned - rows_h)
-        rows_needed = rows_h + self.scroll
+        # Una fila de más: para saber si queda algo por encima (can_scroll)
+        # aunque estés al final.
+        rows_needed = rows_h + self.scroll + 1
         rows = []
         for segs in reversed(lines):
             rows[:0] = wrap(segs, width - 1)
@@ -1245,10 +1247,10 @@ class App:
         visible = rows[max(0, end - rows_h):end]
         self.can_scroll = len(rows) > rows_h
         more = f"↓ {self.scroll} más" if self.scroll else ""
-        if self.reading and self.can_scroll:
-            more = " · ".join(filter(None, [more, "↑↓ desplazar · Esc archivos"]))
-        elif self.scroll:
-            more += " (Fin)"
+        if self.can_scroll:
+            more = " · ".join(filter(None, [
+                more, "↑↓ desplazar · Tab archivos" if self.reading
+                else "Tab: ↑↓ en la salida"]))
         self.rule(top, left, width, title, more)
         for i, row in enumerate(visible):
             x = left + 1
@@ -1401,8 +1403,8 @@ class App:
         lines += [("", 0), ("Moverse", CYAN),
                   ("  ↑↓ jk  elegir archivo", 0),
                   ("  RePág AvPág Inicio Fin  desplazar la salida", 0),
-                  ("  ↑↓ jk  con una nota larga, desplazarla (Esc: volver", 0),
-                  ("         a los archivos)", 0),
+                  ("  Tab  con una salida larga, ↑↓ jk la desplazan;", 0),
+                  ("       Tab (o Esc) las devuelve a los archivos", 0),
                   ("  espacio  menú de acciones", 0)]
         if VIM_PANE:
             lines += [("", 0), ("En vim", CYAN),
@@ -1574,6 +1576,8 @@ class App:
             self.move_sel(-1)
         elif down:
             self.move_sel(1)
+        elif key == 9 and self.can_scroll:
+            self.reading = not self.reading
         elif key == 27:
             self.reading = False
         elif key in (curses.KEY_PPAGE, curses.KEY_NPAGE, curses.KEY_HOME,
