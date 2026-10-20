@@ -10,21 +10,7 @@ preparado.
 > ¿Por qué «43»? Es una broma interna del cursus: los archivos de práctica
 > llevan un «43» en la cabecera en lugar del logo de 42.
 
-```
- /* libft · 43 */                                   🎯 examen 7/21
-─ Tus archivos (3) ─────────────────────────────────────────────────
-▸ ✔ ft_bzero     todo OK · 3m10s
-  · ft_split     ⏱ 12m30s
-  ✘ ft_strtrim   1 KO · norma KO
-─ ft_split ───────────────────────────────────────────── Parte 2 ─
- char **ft_split(char const *s, char c);
- ⏱ en marcha: 12m30s · sin pistas
- ★ Cadenas nuevas: · pendiente
-─ Salida ───────────────────────────────────────────────────────────
- 🧪 ft_split
- ft_split : 1.OK 2.OK 3.KO 4.OK …
-  ⏎ abrir en vim   t test   i pista   m man   espacio acciones   ? ayuda
-```
+![Demo: crear ft_strlen, escribirla en vim, testearla con F5 y ver una pista](docs/demo.gif)
 
 ## Qué hace
 
