@@ -320,6 +320,10 @@ class App:
         self.output = []            # líneas ya parseadas
         self.scroll = 0             # filas desde el final (0 = seguir)
         self.pin_line = None        # línea que se mantiene arriba (notas)
+        # Leyendo una nota que no cabe: ↑↓ desplazan la salida, no la
+        # lista de archivos. Esc (o la siguiente orden) lo quita.
+        self.reading = False
+        self.can_scroll = False     # la salida no cabe en su panel
         self.lock = threading.Lock()
 
         self.proc = None
@@ -496,6 +500,7 @@ class App:
         self.scroll = 0
         self.pin_line = len(self.output) - 1 if args[:1] and args[0] in PINNED \
             else None
+        self.reading = self.pin_line is not None
         self.job_title = title
         self.job_done = None
         self.job_start = time.time()
@@ -786,6 +791,7 @@ class App:
             self.output.clear()
         self.scroll = 0
         self.pin_line = None
+        self.reading = False
 
     def surrender(self):
         exam = self.exam()
@@ -1215,11 +1221,8 @@ class App:
         if self.proc:
             spin = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"[int(time.time() * 8) % 10]
             title = f"Salida {spin} {self.job_title}"
-        more = ""
-        if self.scroll:
-            more = f"↓ {self.scroll} más (Fin)"
-        self.rule(top, left, width, title, more)
         if not lines:
+            self.rule(top, left, width, title)
             self.draw_welcome(top + 1, left, width)
             return
 
@@ -1240,6 +1243,13 @@ class App:
             self.scroll = max_scroll
         end = len(rows) - self.scroll
         visible = rows[max(0, end - rows_h):end]
+        self.can_scroll = len(rows) > rows_h
+        more = f"↓ {self.scroll} más" if self.scroll else ""
+        if self.reading and self.can_scroll:
+            more = " · ".join(filter(None, [more, "↑↓ desplazar · Esc archivos"]))
+        elif self.scroll:
+            more += " (Fin)"
+        self.rule(top, left, width, title, more)
         for i, row in enumerate(visible):
             x = left + 1
             for text, color, bold in row:
@@ -1391,6 +1401,8 @@ class App:
         lines += [("", 0), ("Moverse", CYAN),
                   ("  ↑↓ jk  elegir archivo", 0),
                   ("  RePág AvPág Inicio Fin  desplazar la salida", 0),
+                  ("  ↑↓ jk  con una nota larga, desplazarla (Esc: volver", 0),
+                  ("         a los archivos)", 0),
                   ("  espacio  menú de acciones", 0)]
         if VIM_PANE:
             lines += [("", 0), ("En vim", CYAN),
@@ -1553,10 +1565,17 @@ class App:
         h, _ = self.scr.getmaxyx()
         page = max(1, h - 8)
         name = self.key_name(key)
-        if key in (curses.KEY_UP,) or name == "k":
+        up = key == curses.KEY_UP or name == "k"
+        down = key == curses.KEY_DOWN or name == "j"
+        if self.reading and self.can_scroll and (up or down):
+            self.pin_line = None
+            self.scroll = self.scroll + 1 if up else max(0, self.scroll - 1)
+        elif up:
             self.move_sel(-1)
-        elif key in (curses.KEY_DOWN,) or name == "j":
+        elif down:
             self.move_sel(1)
+        elif key == 27:
+            self.reading = False
         elif key in (curses.KEY_PPAGE, curses.KEY_NPAGE, curses.KEY_HOME,
                      curses.KEY_END):
             self.pin_line = None
