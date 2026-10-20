@@ -77,6 +77,13 @@ augroup END
 " El archivo de la línea de órdenes se abre antes de cargar este script.
 call s:Remember()
 
+" Colores RGB (termguicolors) dentro de tmux: vim se cree en una terminal
+" «screen» y, sin esto, no manda ningún color.
+if &termguicolors && $TMUX !=# ''
+	let &t_8f = "\<Esc>[38;2;%lu;%lu;%lum"
+	let &t_8b = "\<Esc>[48;2;%lu;%lu;%lum"
+endif
+
 " Sin foco, vim se apaga: sin colores de sintaxis y con el texto en gris.
 " Este vim no recibe los eventos de foco dentro de tmux, así que el menú
 " deja dónde está el foco en .libft_foco y aquí se mira cada 0,3 s.
@@ -106,7 +113,7 @@ function! s:CheckFocus(timer) abort
 	endif
 endfunction
 function! s:DimColors() abort
-	highlight LibftDim guifg=#5a5a5a ctermfg=240
+	highlight LibftDim guifg=#444444 ctermfg=238
 endfunction
 call s:DimColors()
 augroup libft43_focus

@@ -81,13 +81,14 @@ STACK_BELOW = 100
 
 # Órdenes cuya salida se lee desde el principio, no desde el final.
 PINNED = ("tip", "nota", "casos", "progreso", "intentos", "man",
-          "preparado")
+          "preparado", "modos")
 
 # Colores de cada fila del «43», como el degradado del logo de 42.
 LOGO_COLORS = (6, 6, 4, 4, 5, 5, 5)
 
 # Colores: 1 rojo, 2 verde, 3 amarillo, 4 azul, 5 magenta, 6 cian, 7 blanco.
-RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN = 1, 2, 3, 4, 5, 6
+RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE = 1, 2, 3, 4, 5, 6, 7
+DIM = 8     # no es un color: texto atenuado (\033[2m)
 
 # Paletas (C en el menú): colores de 256 (y de 8, si la terminal no tiene
 # más) para el cian, el azul y el magenta del menú, que son el acento, los
@@ -123,6 +124,8 @@ def parse_ansi(line):
                 color, bold = 0, False
             elif n == 1:
                 bold = True
+            elif n == 2:
+                color = DIM
             elif 31 <= n <= 37 or 91 <= n <= 97:
                 color = n % 10
             elif n == 39:
@@ -131,6 +134,35 @@ def parse_ansi(line):
     if pos < len(line):
         segs.append((CONTROL.sub("", line[pos:]), color, bold))
     return segs
+
+
+# Lo que va en el color por defecto de la terminal (en muchas, verde) se
+# distingue: etiquetas al principio de línea («Motivo:»), comandos
+# (libft_43.sh examen) y nombres de función (ft_memmove).
+LABEL = re.compile(r"^(\s*)([^\W\d_][\w ¿?¡!]{0,28}:)(?=\s|$)")
+WORDS = re.compile(r"(?P<cmd>(?:\./)?libft_43\.sh(?: (?:[a-z]+|ft_\w+|\d))*)"
+                   r"|(?P<func>\bft_[a-z_]+\b)")
+
+
+def colorize(segs):
+    out = []
+    for i, (text, color, bold) in enumerate(segs):
+        if color:
+            out.append((text, color, bold))
+            continue
+        if i == 0:
+            m = LABEL.match(text)
+            if m:
+                out += [(m.group(1), 0, bold), (m.group(2), CYAN, True)]
+                text = text[m.end():]
+        pos = 0
+        for m in WORDS.finditer(text):
+            out.append((text[pos:m.start()], 0, bold))
+            out.append((m.group(), MAGENTA, bold) if m.group("cmd")
+                       else (m.group(), WHITE, True))
+            pos = m.end()
+        out.append((text[pos:], 0, bold))
+    return [seg for seg in out if seg[0]]
 
 
 def char_width(ch):
@@ -484,7 +516,7 @@ class App:
                 self.step_segs = [(f"  ⏳ {self.step}…", YELLOW, True)]
                 self.add_line(self.step_segs)
                 continue
-            segs = parse_ansi(line)
+            segs = colorize(parse_ansi(line))
             plain = "".join(seg[0] for seg in segs).strip()
             if self.step and plain[2:].startswith(self.step) \
                     and plain[:1] in "✔✘":
@@ -863,6 +895,10 @@ class App:
             "Las 21 funciones clave: cuáles tienes listas (resueltas sin "
             "pistas en los últimos 14 días) y cuáles te faltan.",
             lambda: self.enqueue(["preparado"], "preparado"))
+        add(g, "M", "Modos de resolución",
+            "Cómo funcionan la práctica, el examen y los tests sin "
+            "cronómetro, y qué cuenta para el progreso y para «¿Preparado?».",
+            lambda: self.enqueue(["modos"], "modos"))
         add(g, "p", "Progreso de las 43",
             "Estado, días resueltas, mejor tiempo y cuándo toca repasar.",
             lambda: self.enqueue(["progreso"], "progreso"))
@@ -927,6 +963,8 @@ class App:
             pass    # escribir en la última celda da error, pero se pinta
 
     def attr(self, color, bold=False):
+        if color == DIM:
+            return curses.A_DIM | (curses.A_BOLD if bold else 0)
         a = curses.color_pair(color) if color and USE_COLOR else 0
         return a | (curses.A_BOLD if bold else 0)
 
@@ -1061,7 +1099,8 @@ class App:
             else:
                 mark, mark_attr = "·", curses.A_DIM
             self.put(y, left + 2, mark, base | mark_attr)
-            self.put(y, left + 4, name, base | curses.A_BOLD, width - 4)
+            self.put(y, left + 4, name, base | self.attr(WHITE, True),
+                     width - 4)
             x = left + 4 + name_w + 1
             if self.is_stale(name):
                 self.put(y, x, "●", base | self.attr(YELLOW, True))
@@ -1112,6 +1151,11 @@ class App:
             self.put(y, left + 1, "Sin testear", curses.A_DIM, width - 2)
         y += 1
 
+        # El modo y qué cuenta si el test pasa ahora (M: cómo funciona).
+        for line in wrap_text(self.mode_text(name, attempt, d), width - 2)[:2]:
+            self.put(y, left + 1, line, curses.A_DIM, width - 2)
+            y += 1
+
         # Estado para el examen y para el repaso.
         if d:
             x = left + 1
@@ -1127,6 +1171,24 @@ class App:
             self.put(y, x, rest, curses.A_DIM, left + width - x - 1)
             y += 1
         return y - top
+
+    @staticmethod
+    def mode_text(name, attempt, d):
+        """Modo de resolución de name y qué cuenta si el test pasa ahora."""
+        key = d.get("ready", "-") != "-"
+        if attempt and attempt[2]:
+            return "Examen · si pasa, cuenta para «¿Preparado?» · M: modos"
+        if attempt and attempt[1]:
+            return ("Práctica con pistas · si pasa, cuenta para el progreso"
+                    + (", no para «¿Preparado?»" if key else "")
+                    + " · M: modos")
+        if attempt:
+            return ("Práctica sin pistas · si pasa, "
+                    + ("cuenta para «¿Preparado?»" if key
+                       else "se guarda el tiempo") + " · M: modos")
+        return ("Sin cronómetro · el test cuenta para el progreso"
+                + (", no para «¿Preparado?» (r o n para cronometrar)"
+                   if key else "") + " · M: modos")
 
     def draw_output(self, top, left, height, width):
         self.out_width = width

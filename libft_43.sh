@@ -13,6 +13,7 @@
 #   tip [ft_xxx] [2]: puntos clave (2: pseudocódigo) de tus notas.
 #   nota | casos | obsidian [ft_xxx]: nota entera, casos límite, Obsidian.
 #   progreso: estado de las 43 funciones.
+#   modos: cómo funcionan la práctica, el examen y los tests sin cronómetro.
 #   preparado: si estás listo para el examen (funciones clave).
 #   man [ft_xxx]: man de la original o el subject (vale en examen).
 #   intentos [ft_xxx]: intentos en marcha o versiones guardadas.
@@ -687,6 +688,8 @@ start_workspace() {
 			vim -S "$SCRIPT_DIR/libft_vim.vim" $file)
 		tmux set -t "$TMUX_SESSION" mouse on
 		tmux set -s focus-events on     # vim sabe cuándo pasas al menú
+		# Que los colores RGB de vim lleguen tal cual a la terminal.
+		tmux set -as terminal-features ",$TERM:RGB"
 		set_pause_hooks
 	fi
 	tmux split-window -h -l 45% -t "$vim_pane" -c "$PWD" \
@@ -1173,6 +1176,11 @@ create_file() {
 	attempt_set "$1" "$(date +%s)" 0 "${3:-0}"
 	echo "$1" > "$LAST"
 	echo -e "Creado: \033[1;35m$file\033[0m (el tiempo empieza a contar)"
+	if [ "${3:-0}" != 1 ]; then
+		echo -e "\033[1;33m⏱ Modo práctica:\033[0m si pasa sin pistas, cuenta para" \
+			"«¿Preparado?»; si pides una (tip, casos, nota), cuenta como con pistas."
+		echo -e "\033[2mCómo funciona cada modo: $(basename "$0") modos (M en el menú)\033[0m"
+	fi
 }
 
 # Rehace la cabecera de un archivo con el «43» de HEADER_ART, conservando
@@ -1239,9 +1247,43 @@ suggest() {
 	if [ "$2" = 1 ]; then
 		echo -e "\033[1;31mSin pistas hasta que pase el test (man sí:" \
 			"$(basename "$0") man). Para abandonar: $(basename "$0") rendirse\033[0m"
-	else
-		echo -e "Pista: \033[1m$(basename "$0") tip\033[0m muestra los puntos clave."
 	fi
+}
+
+# Cómo funciona cada modo de resolución y qué cuenta para qué.
+show_modes() {
+	local b="\033[1m" c="\033[1;36m" y="\033[1;33m" r="\033[1;31m" d="\033[2m" n="\033[0m"
+
+	echo -e "${c}📚 Modos de resolución$n
+
+${y}⏱ Práctica$n  ${d}(r, 1 2 3, n)$n
+  Se crea el archivo y empieza el cronómetro. Puedes pedir pistas (i, e, o),
+  pero entonces el intento queda «con pistas». Cuando el test sale perfecto
+  se guarda el tiempo en el historial y el cronómetro se cierra.
+  ${b}→ Sin pistas: cuenta para «¿Preparado?». Con pistas: solo para el progreso.$n
+
+${r}📝 Examen$n  ${d}(E)$n
+  Una función clave al azar, sin pistas hasta que pase (el man sí está
+  permitido). Si te rindes (E otra vez), vuelven las pistas y el intento
+  queda «con pistas».
+  ${b}→ Cuenta para «¿Preparado?».$n
+
+${b}· Sin cronómetro$n  ${d}(t sin intento en marcha)$n
+  Si testeas una función sin cronómetro (un archivo tuyo, una ya resuelta
+  o un intento cancelado con x), el resultado se apunta en el historial.
+  ${b}→ Cuenta para el progreso, no para «¿Preparado?»: no se sabe si usaste pistas.$n
+
+${c}Qué cuenta para qué$n
+  Progreso (p): cualquier ✔. Con días distintos seguidos con ✔, la
+    función pasa a ✔ dominada y vuelve a tocar más tarde (⟳ repasar).
+  ¿Preparado? (P): las funciones clave (★). Una está ✔ lista si la
+    resolviste cronometrada y sin pistas (práctica o examen) en los
+    últimos $READY_DAYS días y no ha fallado después.
+
+${c}El cronómetro$n
+  Solo hay uno a la vez: empezar otro intento cancela el anterior.
+  z pausa / sigue · x cancela (no guarda el tiempo) · se pausa solo al
+  cerrar la ventana y sigue al volver."
 }
 
 case "$1" in
@@ -1327,6 +1369,7 @@ case "$1" in
 			fi
 		done ;;
 	preparado) show_readiness ;;
+	modos) show_modes ;;
 	man)
 		name=$(resolve_name "$2") || exit 1
 		find_proto "$name" > /dev/null \

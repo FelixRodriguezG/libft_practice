@@ -28,6 +28,7 @@ del subject. Las pistas salen de tus notas de Obsidian.
 ./libft_43.sh nota [ft_xxx]    # la nota de Obsidian entera
 ./libft_43.sh obsidian [ft_xxx]  # abre la nota en Obsidian
 ./libft_43.sh progreso         # estado de las 43 funciones
+./libft_43.sh modos            # cómo funciona cada modo y qué cuenta para qué
 ./libft_43.sh intentos [ft_xxx]  # intentos en marcha / versiones guardadas
 ./libft_43.sh historial [ft_xxx] # resultados de tests anteriores
 ./libft_43.sh cabecera [ft_xxx…] # rehace la cabecera con el «43» (sin nombres: todas)
@@ -79,6 +80,10 @@ que lo lanzas, igual que el script.
 - **Paleta de colores:** `C` en el menú pasa por 42 (cian), ámbar y
   violeta. Cambia el acento, el «43» y el borde del panel activo; el verde
   de ✔ y el rojo de ✘ no cambian. Se recuerda para la próxima vez.
+- **Colores de la salida:** los nombres de función van en blanco, las
+  etiquetas del principio de línea (`Motivo:`, `Te faltan:`) en el color de
+  acento, los comandos (`libft_43.sh examen`) en el secundario de la paleta
+  y lo secundario atenuado. El resto usa el color de tu terminal.
 - **El test, desde vim:** el título de vim muestra el test en marcha
   (`vim · ⏳ test ft_strlen · libftTester · 4s`) y luego su resultado
   (`vim · ✔ test ft_strlen: todo OK`), así que con F5 no hace falta cambiar
@@ -161,6 +166,7 @@ vídeo inverso.
 | | `a` | Auto-test: cada vez que guardas se testea solo y te avisa en el escritorio |
 | | `s` | Parar el test en marcha |
 | Ver | `P` | ¿Preparado para el examen? |
+| | `M` | Modos de resolución: práctica, examen y sin cronómetro |
 | | `p` / `H` | Progreso de las 43 / historial completo |
 | Menú | `c` / `0` | Limpiar la salida / poner a cero las sugerencias (pide confirmación) |
 | | `C` | Cambiar la paleta de colores: 42, ámbar, violeta |
@@ -272,6 +278,19 @@ nombre y de `Updated:` con el logo de 42, y la cabecera queda mezclada:
   código. Los archivos sin cabecera de 42 no se tocan.
 
 La norminette acepta las dos versiones; solo cambia cómo se ve.
+
+## Modos de resolución
+
+| Modo | Cómo se empieza | Pistas | Si pasa, cuenta para |
+|------|-----------------|--------|----------------------|
+| ⏱ Práctica | `r`, `1` `2` `3`, `n` | Sí, pero el intento queda «con pistas» | Sin pistas: progreso y «¿Preparado?». Con pistas: solo progreso |
+| 📝 Examen | `E` | No hasta que pase (el man sí) | Progreso y «¿Preparado?» |
+| · Sin cronómetro | `t` sin intento en marcha | Sí | Solo progreso (no se sabe si usaste pistas) |
+
+La ficha de la función seleccionada dice siempre en qué modo estás y qué
+contará si el test pasa ahora (por ejemplo, `Práctica sin pistas · si pasa,
+cuenta para «¿Preparado?»`). `M` en el menú (o `./libft_43.sh modos`) lo
+explica entero.
 
 ## Tiempo de resolución
 
