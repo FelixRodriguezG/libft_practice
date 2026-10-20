@@ -10,7 +10,7 @@ preparado.
 > ¿Por qué «43»? Es una broma interna del cursus: los archivos de práctica
 > llevan un «43» en la cabecera en lugar del logo de 42.
 
-![Demo: crear ft_strlen, escribirla en vim, testearla con F5 y ver una pista](docs/demo.gif)
+![Demo: crear ft_strlen, escribirla en vim, testearla con F5 viendo cada paso y cada caso, y cambiar la paleta de colores](docs/demo.gif)
 
 ## Qué hace
 

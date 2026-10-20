@@ -339,6 +339,7 @@ class App:
         self.apply_palette()
         self.last_focus = 0
         self.titles = {}            # títulos de los paneles ya puestos
+        self.last_test = ""         # último resultado de test (título de vim)
         self.queue = []
         self.auto = False
         self.status = ""
@@ -546,6 +547,7 @@ class App:
         elif self.job_title.startswith(("test", "auto-test")):
             self.status = (f"✔ {self.job_title}: todo OK" if code == 0
                            else f"✘ {self.job_title}: hay fallos (míralos abajo)")
+            self.last_test = self.status.split(" (")[0]
             if self.job_title.startswith("auto"):
                 notify(self.status)
                 if code != 0:
@@ -762,8 +764,8 @@ class App:
             secs = int(time.time() - self.job_start)
             step = f" · {self.step}" if self.step else ""
             text += f" · ⏳ {self.job_title}{step} · {secs}s"
-        elif self.status.startswith(("✔", "✘", "⛔")):
-            text += f" · {self.status.split(' (')[0]}"
+        elif self.last_test:
+            text += f" · {self.last_test}"
         self.set_title(VIM_PANE, text)
 
     def toggle_auto(self):
