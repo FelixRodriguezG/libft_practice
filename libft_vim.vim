@@ -47,6 +47,76 @@ augroup libft43
 	autocmd BufWritePre ft_*.c call s:FixHeader()
 augroup END
 
+" Autoguardado: tras unos segundos sin escribir, al cambiar de archivo y al
+" pasar al menú, para no perder nada si se cierra la ventana. No guarda si el
+" archivo ha cambiado fuera de vim (por ejemplo, el script acaba de crearlo
+" de nuevo): así no lo pisa con lo que hubiera en vim.
+set updatetime=3000
+function! s:AutoSave() abort
+	let l:file = expand('%:p')
+	if !&modified || l:file ==# '' || &readonly || &buftype !=# ''
+		return
+	endif
+	" La hora del archivo va por segundos: se mira también el contenido.
+	if filereadable(l:file) && (getftime(l:file) != get(b:, 'libft_mtime', -1)
+				\ || readfile(l:file, 'b') != get(b:, 'libft_disk', []))
+		return
+	endif
+	silent update
+endfunction
+function! s:Remember() abort
+	let l:file = expand('%:p')
+	let b:libft_mtime = getftime(l:file)
+	let b:libft_disk = filereadable(l:file) ? readfile(l:file, 'b') : []
+endfunction
+augroup libft43_autosave
+	autocmd!
+	autocmd BufReadPost,BufWritePost * call s:Remember()
+	autocmd CursorHold,CursorHoldI,BufLeave,FocusLost * ++nested call s:AutoSave()
+augroup END
+" El archivo de la línea de órdenes se abre antes de cargar este script.
+call s:Remember()
+
+" Sin foco, vim se apaga: sin colores de sintaxis y con el texto en gris.
+" Este vim no recibe los eventos de foco dentro de tmux, así que el menú
+" deja dónde está el foco en .libft_foco y aquí se mira cada 0,3 s.
+let s:focus_file = s:dir . '/.libft_foco'
+let s:dimmed = 0
+function! s:Dim(on) abort
+	if a:on
+		if &l:syntax !=# 'OFF'
+			let b:libft_syntax = &l:syntax
+			setlocal syntax=OFF
+		endif
+		setlocal wincolor=LibftDim
+	else
+		if exists('b:libft_syntax')
+			let &l:syntax = b:libft_syntax
+			unlet b:libft_syntax
+		endif
+		setlocal wincolor=
+	endif
+endfunction
+function! s:CheckFocus(timer) abort
+	let l:where = filereadable(s:focus_file) ? get(readfile(s:focus_file), 0, '') : ''
+	let l:dim = l:where ==# 'menu' || l:where ==# 'nada'
+	if l:dim != s:dimmed
+		let s:dimmed = l:dim
+		call s:Dim(l:dim)
+	endif
+endfunction
+function! s:DimColors() abort
+	highlight LibftDim guifg=#5a5a5a ctermfg=240
+endfunction
+call s:DimColors()
+augroup libft43_focus
+	autocmd!
+	autocmd ColorScheme * call s:DimColors()
+	" El menú puede abrir otro archivo con vim sin foco.
+	autocmd BufEnter * call s:Dim(s:dimmed)
+augroup END
+call timer_start(300, function('s:CheckFocus'), {'repeat': -1})
+
 " El menú lee las peticiones de este archivo, junto al script.
 let s:requests = s:dir . '/.libft_peticiones'
 

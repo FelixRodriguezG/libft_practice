@@ -22,8 +22,10 @@ preparado.
 - **Test completo:** norminette, libftTester con valgrind y reglas del
   subject que libftTester no mira (funciones no autorizadas, `static`,
   variables globales, `ft_is*` que devuelven 1 o 0, `ft_calloc` con 0…).
+  Ves cada paso mientras se hace y cada caso con su código y su ✔/✘.
 - **Cronómetro** de cada intento: el tiempo hasta que el test sale
-  perfecto, y si usaste pistas.
+  perfecto, y si usaste pistas. Se puede pausar (`z`) o cancelar (`x`); solo
+  hay uno a la vez.
 - **Pistas por niveles** sacadas de las [notas](notas/) (puntos clave,
   pseudocódigo, casos límite) y el `man` de cada función.
 - **Modo examen:** sin pistas (el man sí), con las funciones clave.
@@ -75,11 +77,14 @@ la ayuda; la barra de abajo enseña siempre las teclas útiles en cada
 momento.
 
 Para cambiar entre vim y el menú: `Ctrl-b` y una flecha, o un clic. Para
-copiar texto: Mayús + arrastrar. Si cierras la ventana, la sesión sigue
-abierta: `./libft_43.sh menu` te devuelve a ella.
+copiar texto: Mayús + arrastrar. Vim guarda solo cada pocos segundos. Si
+cierras la ventana, la sesión sigue abierta y el cronómetro se pausa:
+`./libft_43.sh menu` te devuelve a ella. Si sales de vim, **`⏎`** en el
+menú lo vuelve a abrir.
 
 Prefieres tu editor: `./libft_43.sh tui` abre solo el menú (con `a` se
-testea solo cada vez que guardas).
+testea solo cada vez que guardas). Ahí `⏎` abre vim igualmente; para
+testear sin abrirlo, usa `t`.
 
 ## Preparar el examen o la defensa
 

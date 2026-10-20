@@ -18,6 +18,8 @@ del subject. Las pistas salen de tus notas de Obsidian.
 ./libft_43.sh preparado        # ¿estás listo para el examen?
 ./libft_43.sh man [ft_xxx]     # man de la original o ficha del subject
 ./libft_43.sh rendirse         # abandona el examen
+./libft_43.sh pausa [ft_xxx]   # pausa el cronómetro (otra vez: sigue)
+./libft_43.sh cancelar [ft_xxx] # quita el cronómetro sin guardar el tiempo
 ./libft_43.sh new ft_xxx       # crea el archivo de una función concreta
 ./libft_43.sh test [ft_xxx…]   # testea (sin nombres: todos los ft_*.c)
 ./libft_43.sh tip [ft_xxx]     # puntos clave (sin nombre: la última sugerida)
@@ -30,7 +32,7 @@ del subject. Las pistas salen de tus notas de Obsidian.
 ./libft_43.sh historial [ft_xxx] # resultados de tests anteriores
 ./libft_43.sh cabecera [ft_xxx…] # rehace la cabecera con el «43» (sin nombres: todas)
 ./libft_43.sh lista            # parte, nombre, veces sugerida y estado
-./libft_43.sh reset            # pone a cero el contador de sugerencias
+./libft_43.sh reset            # pone a cero las veces que ha salido cada función
 ./libft_43.sh help             # esta ayuda (también -h o --help)
 ```
 
@@ -49,6 +51,13 @@ que lo lanzas, igual que el script.
 - Vim es el tuyo, con tu `.vimrc` (y el plugin de la cabecera de 42). Se
   abre con la última función sugerida, si está en la carpeta.
 - En el menú, **⏎ abre el archivo seleccionado en vim** (y `t` lo testea).
+  Si has salido de vim (`:q`), ⏎ lo vuelve a abrir a la izquierda.
+- Si has abierto el menú solo (`./libft_43.sh tui` o `./libft_tui.py`), ⏎
+  también abre vim: dentro de tmux, en un panel a la izquierda; fuera, el
+  menú se cambia por vim y el menú juntos. Si la sesión `libft43` sigue
+  abierta (por ejemplo, porque cerraste la ventana), el menú te avisa y ⏎
+  te devuelve a ella, con lo que tuvieras sin guardar en vim. Si en esa
+  sesión falta el menú, vuelve a aparecer al lado de vim.
 - Al sugerir (`r`, `1` `2` `3`), crear (`n`) o empezar un examen (`E`), el
   archivo nuevo se abre solo en vim, listo para escribir.
 - Atajos que solo existen en esta sesión de vim (`libft_vim.vim`; tu
@@ -62,12 +71,32 @@ que lo lanzas, igual que el script.
 
 - Para cambiar de panel: `Ctrl-b` y una flecha, o un clic (el ratón está
   activado en esta sesión). Con la rueda se desplaza la salida.
+- **Dónde está el foco:** cada panel lleva su título encima; el que tiene el
+  foco va en color y con ▶. Además, la barra `/* libft · 43 */` del menú va
+  en color con el foco en el menú y se apaga («foco en vim») si no. El
+  panel sin foco se oscurece: el menú se atenúa y vim pierde los colores de
+  sintaxis y pone el texto en gris (vuelve todo al darle el foco).
+- **Paleta de colores:** `C` en el menú pasa por 42 (cian), ámbar y
+  violeta. Cambia el acento, el «43» y el borde del panel activo; el verde
+  de ✔ y el rojo de ✘ no cambian. Se recuerda para la próxima vez.
+- **El test, desde vim:** el título de vim muestra el test en marcha
+  (`vim · ⏳ test ft_strlen · libftTester · 4s`) y luego su resultado
+  (`vim · ✔ test ft_strlen: todo OK`), así que con F5 no hace falta cambiar
+  de panel.
 - Para seleccionar y copiar texto (por ejemplo, un error del compilador):
   **Mayús + arrastrar**, porque tmux se queda con el ratón.
-- Si sales de tmux con `Ctrl-b d`, la sesión sigue abierta:
-  `./libft_43.sh menu` te devuelve a ella.
-- Para cerrarla del todo: `:qa` en vim y `q` en el menú, o
-  `tmux kill-session -t libft43`.
+- **Vim guarda solo**: tras 3 segundos sin escribir, al cambiar de archivo
+  y al pasar al menú. Si cierras la ventana sin querer, no pierdes nada. No
+  guarda encima de un archivo que haya cambiado fuera de vim (por ejemplo,
+  si el script lo acaba de crear de nuevo). Con el auto-test (`a`), cada
+  autoguardado lanza un test.
+- Si cierras la ventana o sales de tmux con `Ctrl-b d`, la sesión sigue
+  abierta y **el cronómetro se pausa solo**: `./libft_43.sh menu` te
+  devuelve a ella y el cronómetro sigue donde estaba. Si lo habías pausado
+  tú, sigue en pausa.
+- Para cerrarla del todo: **`Q` en el menú** guarda lo de vim y cierra vim
+  y el menú a la vez (el cronómetro se pausa hasta que vuelvas). También
+  vale `:qa` en vim y `q` en el menú, o `tmux kill-session -t libft43`.
 - Si ya estás dentro de tmux, se abre en una ventana nueva de tu sesión.
 - Sin tmux instalado, `menu` abre solo el menú.
 
@@ -119,20 +148,24 @@ vídeo inverso.
 | Practicar | `r` / `1` `2` `3` | Sugerir una función (todas o de una parte) |
 | | `n` | Elegir una función: escribe para filtrar, ⏎ la crea, Tab muestra su pista |
 | | `E` | Empezar un examen; con uno en marcha, rendirse (pide confirmación) |
-| Con la función seleccionada | `⏎` | Abrirla en vim (sin vim: testearla) |
+| Con la función seleccionada | `⏎` | Abrirla en vim (si vim no está abierto, lo abre) |
 | | `t` | Testearla |
 | | `m` | Man de la original o ficha del subject (permitido en examen) |
 | | `i` | Pista; `i` otra vez: el pseudocódigo |
 | | `e` | Casos límite |
 | | `o` / `O` | Nota completa / abrirla en Obsidian |
 | | `h` / `v` | Su historial / sus versiones guardadas |
+| | `z` | Pausar el cronómetro de su intento; `z` otra vez: sigue contando |
+| | `x` | Cancelar su cronómetro sin guardar el tiempo (pide confirmación) |
 | Probar | `T` | Testear todos los `ft_*.c` |
 | | `a` | Auto-test: cada vez que guardas se testea solo y te avisa en el escritorio |
 | | `s` | Parar el test en marcha |
 | Ver | `P` | ¿Preparado para el examen? |
 | | `p` / `H` | Progreso de las 43 / historial completo |
-| Menú | `c` / `x` | Limpiar la salida / reiniciar el contador (pide confirmación) |
-| | `espacio` / `?` / `q` | Acciones / ayuda / salir |
+| Menú | `c` / `0` | Limpiar la salida / poner a cero las sugerencias (pide confirmación) |
+| | `C` | Cambiar la paleta de colores: 42, ámbar, violeta |
+| | `q` / `Q` | Salir del menú / cerrar vim y el menú a la vez (guarda lo de vim) |
+| | `espacio` / `?` | Acciones / ayuda |
 | Moverse | `↑↓` `jk` | Elegir archivo |
 | | `RePág` `AvPág` `Inicio` `Fin` | Desplazar la salida |
 
@@ -252,10 +285,22 @@ pistas (`tip`, `casos`, `nota` u `obsidian` durante el intento):
 ```
 
 Mientras no pase, cada test te dice cuánto llevas. El tiempo es de reloj
-(desde que se creó el archivo), así que incluye las pausas. Los archivos
-que no ha creado el script no cronometran.
+(desde que se creó el archivo), salvo cuando lo pausas o cuando cierras la
+ventana de `./libft_43.sh menu`, que lo pausa solo hasta que vuelves. Los
+archivos que no ha creado el script no cronometran.
+
+**Solo hay un cronómetro a la vez**: al empezar un intento nuevo (`r`, `n`,
+`E`), el que hubiera en marcha se cancela.
+
+Si vas a parar un rato, **pausa el cronómetro** (`z` en el menú) y vuelve a
+pulsar `z` para seguir: el tiempo final no cuenta la pausa. Si no vas a
+terminar la función, **cancela el cronómetro** (`x`): se para y desaparece,
+no se guarda ningún tiempo y el archivo se queda como está. Vuelve con el
+próximo intento.
 
 ```bash
+./libft_43.sh pausa memset      # pausa el intento (otra vez: sigue)
+./libft_43.sh cancelar memset   # lo quita sin guardar el tiempo
 ./libft_43.sh intentos          # intentos en marcha y versiones guardadas
 ./libft_43.sh intentos memmove  # versiones guardadas de una función
 ```
@@ -377,13 +422,41 @@ función», con una sección `### ft_xxx` por función.
 
 Para cada función:
 
-1. Pasa `norminette` a tu archivo y muestra los errores si los hay.
-2. Copia tu libft real a una carpeta temporal y sustituye esa función por tu
-   versión de práctica (algunos tests usan otras funciones, como `ft_lstnew`).
-3. Compila con `-Wall -Wextra -Werror` y crea `libft.a`.
-4. Ejecuta el test de libftTester con `valgrind` para detectar fugas.
-5. Comprueba las reglas del subject que libftTester no mira (abajo).
-6. Borra la carpeta temporal. Tu libft real y el tester no se modifican.
+1. **norminette**: la pasa a tu archivo y muestra los errores si los hay.
+2. **compilar**: copia tu libft real a una carpeta temporal, sustituye esa
+   función por tu versión de práctica (algunos tests usan otras funciones,
+   como `ft_lstnew`) y compila con `-Wall -Wextra -Werror`.
+3. **libftTester + valgrind**: ejecuta su test con `valgrind` para detectar
+   fugas, y enseña **cada caso** con su ✔/✘ y su código, sacado del `.cpp`
+   del tester: lo que prepara y lo que comprueba.
+4. **reglas del subject**: las que libftTester no mira (abajo), una a una.
+5. Borra la carpeta temporal. Tu libft real y el tester no se modifican.
+
+Cada paso sale con su ✔ o ✘. En el menú, el paso en marcha se ve como
+`⏳ libftTester + valgrind…`, y la barra de estado lo dice con los segundos
+que lleva (`⠹ test ft_strtrim · libftTester + valgrind · 4s`):
+
+```
+🧪 ft_strtrim
+  ✔ norminette
+  ✔ compilar
+  ✘ libftTester + valgrind: 16 OK, 2 KO
+      ✔  1  char * s = ft_strtrim("   xxxtripouille", " x"); → !strcmp(s, "tripouille")
+      ✔  2  malloc de s: strlen("tripouille") + 1 bytes
+      …
+      ✘ 17  s = ft_strtrim("ababa", "a");
+            → !strcmp(s, "bab")
+      ✘ 18  malloc de s: 4 bytes
+  ✔ reglas del subject
+      ✔ solo funciones autorizadas (malloc)
+      ✔ funciones auxiliares con static
+      ✔ sin variables globales
+      ✔ sin restrict
+```
+
+`malloc de s: N bytes` (los `MOK`/`MKO`) comprueba que reservas justo lo
+necesario. Si el programa se cae, los casos que no llegan a ejecutarse salen
+con `·` y se indica en qué caso fue el SIGSEGV.
 
 ### Reglas del subject
 
@@ -397,7 +470,7 @@ Para cada función:
 | `ft_calloc` con 0 | `nmemb` o `size` a 0 debe dar un puntero que se pueda liberar |
 | `ft_calloc` sin desbordamiento | `ft_calloc(SIZE_MAX / 2 + 2, 2)` debe devolver `NULL` (`man 3 calloc`) |
 
-Si una regla falla se muestra con 📜 y el resultado pone `subject KO`.
+Si una regla falla sale con ✘ y el motivo, y el resultado pone `subject KO`.
 
 Ojo: si el compilador puede calcular una llamada sin hacerla (por ejemplo
 `strlen("a")`), `nm` no la ve.
@@ -452,8 +525,11 @@ ejecutas:
   anteriores, en la carpeta actual.
 - Junto al script: `.libft_historial` (resultados), `.libft_counts`
   (sugerencias), `.libft_ultima` (última función sugerida),
-  `.libft_intentos` (intentos en marcha) y `.libft_peticiones` (lo que vim
-  pide al menú con F5–F7; el menú lo vacía al leerlo).
+  `.libft_intentos` (intentos en marcha), `.libft_autopausa` (cronómetro
+  pausado al cerrar la ventana), `.libft_paleta` (la paleta elegida),
+  `.libft_foco` (dónde está el foco, para que vim se apague) y
+  `.libft_peticiones` (lo que vim pide al menú con F5–F7; el menú lo vacía
+  al leerlo).
 
 No modifica tu libft real (`LIBFT_DIR`), ni libftTester (`TESTER_DIR`), ni
 tus notas (`NOTES_DIR`): el modo test copia los archivos a una carpeta

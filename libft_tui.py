@@ -15,6 +15,7 @@ import curses
 import locale
 import os
 import re
+import shutil
 import signal
 import subprocess
 import threading
@@ -28,11 +29,35 @@ HISTORY = os.path.join(SCRIPT_DIR, ".libft_historial")
 ATTEMPTS = os.path.join(SCRIPT_DIR, ".libft_intentos")
 LAST = os.path.join(SCRIPT_DIR, ".libft_ultima")
 REQUESTS = os.path.join(SCRIPT_DIR, ".libft_peticiones")
+PALETTE = os.path.join(SCRIPT_DIR, ".libft_paleta")
+# Dónde está el foco (menu, vim o nada): vim lo lee para apagarse sin foco.
+FOCUS = os.path.join(SCRIPT_DIR, ".libft_foco")
 
 # Panel de tmux con vim, si el menú se abrió con ./libft_43.sh menu.
 VIM_PANE = os.environ.get("LIBFT_VIM_PANE")
 
+
+TMUX_SESSION = "libft43"     # la sesión de ./libft_43.sh menu
+
+
+def session_alive():
+    """Si sigue abierta la sesión de tmux de ./libft_43.sh menu."""
+    try:
+        return subprocess.run(["tmux", "has-session", "-t", TMUX_SESSION],
+                              capture_output=True).returncode == 0
+    except OSError:
+        return False
+
+
+def vim_alive():
+    """Si el panel de vim sigue abierto (se cierra al salir de vim)."""
+    out = subprocess.run(["tmux", "list-panes", "-a", "-F", "#{pane_id}"],
+                         capture_output=True, text=True).stdout
+    return VIM_PANE in out.split()
+
 MAX_LINES = 5000        # líneas de salida que se guardan
+FOCUS_EVERY = 0.25      # segundos entre comprobaciones del foco en tmux
+SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 POLL_EVERY = 0.5        # segundos entre comprobaciones de archivos
 SAVE_SETTLE = 0.6       # espera tras guardar antes del auto-test
 
@@ -63,6 +88,18 @@ LOGO_COLORS = (6, 6, 4, 4, 5, 5, 5)
 
 # Colores: 1 rojo, 2 verde, 3 amarillo, 4 azul, 5 magenta, 6 cian, 7 blanco.
 RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN = 1, 2, 3, 4, 5, 6
+
+# Paletas (C en el menú): colores de 256 (y de 8, si la terminal no tiene
+# más) para el cian, el azul y el magenta del menú, que son el acento, los
+# separadores y el degradado del «43»; y el color del borde del panel activo
+# en tmux. El verde de ✔ y el rojo de ✘ no cambian.
+PALETTES = {
+    "42": ({CYAN: (6, 6), BLUE: (4, 4), MAGENTA: (5, 5)}, "cyan"),
+    "ámbar": ({CYAN: (214, 3), BLUE: (172, 3), MAGENTA: (167, 1)},
+              "colour214"),
+    "violeta": ({CYAN: (141, 5), BLUE: (99, 4), MAGENTA: (213, 5)},
+                "colour141"),
+}
 
 STATE_TEXT = {"✔": "dominada", "⟳": "toca repasar",
               "✘": "falló el último test", "·": "sin hacer"}
@@ -175,18 +212,26 @@ def load_logo():
 
 
 def load_attempts():
-    """Intentos en marcha: {nombre: (inicio, pistas, examen)}."""
+    """Intentos en marcha: {nombre: (inicio, pistas, examen, pausa)}.
+    pausa es cuándo se pausó (0: el tiempo corre)."""
     attempts = {}
     try:
         with open(ATTEMPTS, encoding="utf-8") as f:
             for line in f:
                 parts = line.split()
-                if len(parts) == 4:
-                    attempts[parts[0]] = (int(parts[1]), parts[2] == "1",
-                                          parts[3] == "1")
+                if len(parts) in (4, 5):
+                    attempts[parts[0]] = (
+                        int(parts[1]), parts[2] == "1", parts[3] == "1",
+                        int(parts[4]) if len(parts) == 5 else 0)
     except (OSError, ValueError):
         pass
     return attempts
+
+
+def attempt_elapsed(attempt):
+    """Segundos de un intento; en pausa, los que llevaba al pausarlo."""
+    start, _, _, paused = attempt
+    return (paused or int(time.time())) - start
 
 
 def fmt_time(secs):
@@ -246,6 +291,22 @@ class App:
         self.proc = None
         self.job_title = ""
         self.job_done = None
+        self.job_start = 0
+        self.step = None            # paso del test en marcha («⏳ …»)
+        self.step_segs = None       # su línea en la salida, para cambiarla
+        self.focused = True         # el foco está en el menú (no en vim)
+        self.focus_written = None   # lo último escrito en FOCUS
+        self.palette = "42"
+        try:
+            with open(PALETTE, encoding="utf-8") as f:
+                name = f.read().strip()
+            if name in PALETTES:
+                self.palette = name
+        except OSError:
+            pass
+        self.apply_palette()
+        self.last_focus = 0
+        self.titles = {}            # títulos de los paneles ya puestos
         self.queue = []
         self.auto = False
         self.status = ""
@@ -257,6 +318,10 @@ class App:
         self.filter = ""
         self.pick = 0               # fila elegida en el buscador / acciones
         self.help_scroll = 0
+        self.vim_gone = False       # ya se ha avisado de que vim está cerrado
+        if not os.environ.get("TMUX") and session_alive():
+            self.status = (f"Tienes vim abierto en la sesión {TMUX_SESSION}: "
+                           "⏎ vuelve a ella")
 
     # ---------- archivos e historial ----------
 
@@ -265,6 +330,9 @@ class App:
         if now - self.last_poll < POLL_EVERY:
             return
         self.last_poll = now
+        if VIM_PANE and not self.vim_gone and not vim_alive():
+            self.vim_gone = True
+            self.status = "Has cerrado vim: ⏎ lo vuelve a abrir con el archivo"
         mtimes = {}
         for entry in os.scandir(self.cwd):
             if entry.name.startswith("ft_") and entry.name.endswith(".c"):
@@ -344,7 +412,7 @@ class App:
 
     def exam(self):
         """(nombre, inicio) del examen en marcha, o None."""
-        for name, (start, _, exam) in self.attempts.items():
+        for name, (start, _, exam, _) in self.attempts.items():
             if exam:
                 return name, start
         return None
@@ -393,9 +461,13 @@ class App:
             else None
         self.job_title = title
         self.job_done = None
+        self.job_start = time.time()
+        self.step = None
         self.status = f"⏳ {title}…"
-        # El man se formatea al ancho del panel de salida.
-        env = dict(os.environ, MANWIDTH=str(max(40, self.out_width - 1)))
+        # El man se formatea al ancho del panel de salida. LIBFT_TUI: el
+        # script avisa de cada paso del test («::paso:: nombre»).
+        env = dict(os.environ, MANWIDTH=str(max(40, self.out_width - 1)),
+                   LIBFT_TUI="1")
         self.proc = subprocess.Popen(
             ["bash", SCRIPT, *args], cwd=self.cwd, env=env,
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -405,8 +477,32 @@ class App:
 
     def read_job(self, proc):
         for raw in proc.stdout:
-            self.add_line(parse_ansi(raw.decode("utf-8", "replace")))
+            line = raw.decode("utf-8", "replace")
+            if line.startswith("::paso:: "):
+                # Empieza un paso: «⏳ paso…» hasta que llegue su resultado.
+                self.step = line[9:].strip()
+                self.step_segs = [(f"  ⏳ {self.step}…", YELLOW, True)]
+                self.add_line(self.step_segs)
+                continue
+            segs = parse_ansi(line)
+            plain = "".join(seg[0] for seg in segs).strip()
+            if self.step and plain[2:].startswith(self.step) \
+                    and plain[:1] in "✔✘":
+                self.replace_line(self.step_segs, segs)
+                self.step = None
+            else:
+                self.add_line(segs)
+        self.step = None
         self.job_done = proc.wait()
+
+    def replace_line(self, old, new):
+        """Cambia la línea old (la misma lista) de la salida por new."""
+        with self.lock:
+            for i in range(len(self.output) - 1, -1, -1):
+                if self.output[i] is old:
+                    self.output[i] = new
+                    return
+            self.output.append(new)
 
     def check_job(self):
         if self.proc is None or self.job_done is None:
@@ -467,8 +563,12 @@ class App:
 
     def open_in_vim(self, name, reload=False):
         """Abre name.c en el panel de vim y le pasa el foco. Con reload,
-        descarta lo que hubiera en vim (archivo recién creado)."""
+        descarta lo que hubiera en vim (archivo recién creado). Si has
+        cerrado vim, vuelve a abrir su panel a la izquierda."""
         if not VIM_PANE or not name:
+            return
+        if not vim_alive():
+            self.reopen_vim(name)
             return
         path = os.path.join(self.cwd, name + ".c").replace(" ", "\\ ")
         cmd = f":hide edit{'!' if reload else ''} {path}"
@@ -480,6 +580,159 @@ class App:
                            capture_output=True)
         except (OSError, subprocess.CalledProcessError):
             self.status = "✘ No encuentro el panel de vim (¿lo has cerrado?)"
+
+    def enter_vim(self, name):
+        """⏎: abre name.c en vim, y vim si no está abierto. Fuera de tmux
+        cambia el menú por el espacio de trabajo (vim + menú), o vuelve a
+        la sesión que siga abierta, con lo que tuvieras sin guardar."""
+        if VIM_PANE:
+            self.open_in_vim(name)
+        elif os.environ.get("TMUX"):
+            self.reopen_vim(name)
+        elif self.proc or self.queue:
+            self.status = "Hay un test en marcha: espera o páralo (s)"
+        elif shutil.which("tmux"):
+            curses.endwin()
+            os.execv(SCRIPT, [SCRIPT, "menu", name])
+        else:
+            # Sin tmux: vim ocupa la terminal y al salir vuelve el menú.
+            curses.endwin()
+            subprocess.run(["vim", "-S", os.path.join(SCRIPT_DIR,
+                                                      "libft_vim.vim"),
+                            name + ".c"])
+            self.scr.refresh()
+
+    def reopen_vim(self, name):
+        """Abre vim con name.c en un panel nuevo a la izquierda del menú."""
+        global VIM_PANE
+        try:
+            out = subprocess.run(
+                ["tmux", "split-window", "-hb", "-l", "55%",
+                 "-t", os.environ.get("TMUX_PANE", ""), "-c", self.cwd,
+                 "-P", "-F", "#{pane_id}",
+                 "vim", "-S", os.path.join(SCRIPT_DIR, "libft_vim.vim"),
+                 name + ".c"],
+                check=True, capture_output=True, text=True)
+        except (OSError, subprocess.CalledProcessError):
+            self.status = "✘ No he podido volver a abrir vim"
+            return
+        VIM_PANE = out.stdout.strip()
+        self.vim_gone = False
+        self.status = f"vim abierto de nuevo con {name}.c"
+
+    def poll_focus(self):
+        """Si el foco está en el menú: el panel activo de la ventana activa
+        y con alguien conectado. Fuera de tmux, siempre."""
+        pane = os.environ.get("TMUX_PANE")
+        now = time.time()
+        if not pane or now - self.last_focus < FOCUS_EVERY:
+            return
+        self.last_focus = now
+        try:
+            out = subprocess.run(
+                ["tmux", "list-panes", "-t", pane, "-F", "#{pane_id} "
+                 "#{pane_active}#{window_active}#{session_attached}"],
+                capture_output=True, text=True).stdout
+        except OSError:
+            return
+        active = [line.split()[0] for line in out.splitlines()
+                  if re.match(r"\S+ 11[1-9]", line)]
+        self.focused = pane in active
+        where = "menu" if self.focused else \
+            "vim" if VIM_PANE in active else "nada"
+        if VIM_PANE and where != self.focus_written:
+            self.write_focus(where)
+
+    def apply_palette(self):
+        """Pone los colores de la paleta en el menú y en el borde de tmux."""
+        pairs, border = PALETTES[self.palette]
+        if USE_COLOR and curses.has_colors():
+            for pair, (rich, basic) in pairs.items():
+                curses.init_pair(pair, rich if curses.COLORS >= 256 else basic,
+                                 -1)
+        if VIM_PANE and os.environ.get("TMUX_PANE"):
+            win = ["-w", "-t", os.environ["TMUX_PANE"]]
+            for opt, value in (("@libft_color", border),
+                               ("pane-active-border-style", f"fg={border}")):
+                subprocess.run(["tmux", "set", *win, opt, value],
+                               capture_output=True)
+
+    def next_palette(self):
+        names = list(PALETTES)
+        self.palette = names[(names.index(self.palette) + 1) % len(names)]
+        self.apply_palette()
+        try:
+            with open(PALETTE, "w", encoding="utf-8") as f:
+                f.write(self.palette + "\n")
+        except OSError:
+            pass
+        self.status = f"Paleta: {self.palette} (C para cambiarla)"
+
+    def close_all(self):
+        def close():
+            self.stop_job()
+            if vim_alive():
+                # Guarda en vim (los archivos con nombre) antes de cerrar.
+                for keys in (["Escape"], ["-l", ":silent! wall"], ["Enter"]):
+                    subprocess.run(["tmux", "send-keys", "-t", VIM_PANE,
+                                    *keys], capture_output=True)
+                time.sleep(0.5)
+            self.write_focus(None)
+            # Al cerrar la sesión de ./libft_43.sh menu, tmux se apaga sin
+            # llegar al hook de la pausa: se pausa aquí (y sigue al volver).
+            session = subprocess.run(
+                ["tmux", "display", "-p", "-t", os.environ.get("TMUX_PANE", ""),
+                 "#{session_name}"], capture_output=True, text=True).stdout
+            if session.strip() == TMUX_SESSION:
+                subprocess.run(["bash", SCRIPT, "autopausa", "on"],
+                               cwd=self.cwd, capture_output=True)
+            # La ventana de vim y el menú (si es la única, toda la sesión).
+            subprocess.run(["tmux", "kill-window", "-t",
+                            os.environ.get("TMUX_PANE", "")],
+                           capture_output=True)
+            return False
+        self.ask("¿Cerrar vim y el menú? Lo de vim se guarda.", close)
+
+    def write_focus(self, where):
+        """Deja dónde está el foco en FOCUS (None: lo borra)."""
+        self.focus_written = where
+        try:
+            if where is None:
+                os.remove(FOCUS)
+            else:
+                with open(FOCUS, "w", encoding="utf-8") as f:
+                    f.write(where + "\n")
+        except OSError:
+            pass
+
+    def set_title(self, pane, text):
+        """Título del panel en su borde (@libft_title, ver libft_43.sh)."""
+        if self.titles.get(pane) == text:
+            return
+        self.titles[pane] = text
+        try:
+            subprocess.run(["tmux", "set", "-p", "-t", pane, "@libft_title",
+                            text], capture_output=True)
+        except OSError:
+            pass
+
+    def update_titles(self):
+        """Menú: «menú». Vim: el test en marcha o su último resultado, para
+        verlo sin cambiar de panel."""
+        pane = os.environ.get("TMUX_PANE")
+        if not pane:
+            return
+        self.set_title(pane, "menú")
+        if not VIM_PANE:
+            return
+        text = "vim"
+        if self.proc:
+            secs = int(time.time() - self.job_start)
+            step = f" · {self.step}" if self.step else ""
+            text += f" · ⏳ {self.job_title}{step} · {secs}s"
+        elif self.status.startswith(("✔", "✘", "⛔")):
+            text += f" · {self.status.split(' (')[0]}"
+        self.set_title(VIM_PANE, text)
 
     def toggle_auto(self):
         self.auto = not self.auto
@@ -501,8 +754,14 @@ class App:
         self.ask(f"¿Rendirte en el examen de {exam[0]}?",
                  lambda: self.enqueue(["rendirse"], "rendirse") or True)
 
+    def cancel(self, name):
+        self.ask(f"¿Cancelar el cronómetro de {name}? El tiempo no se guarda.",
+                 lambda: self.enqueue(["cancelar", name],
+                                      f"cancelar {name}") or True)
+
     def reset_counter(self):
-        self.ask("¿Poner a cero el contador de sugerencias?",
+        self.ask("¿Poner a cero las veces que ha salido cada función? "
+                 "El historial y los tiempos no se tocan.",
                  lambda: self.enqueue(["reset"], "reset") or True)
 
     def quit(self):
@@ -549,10 +808,10 @@ class App:
                 lambda: self.enqueue(["examen"], "examen"))
 
         g = f"Con {sel}" if sel else "Con la función"
-        if VIM_PANE:
-            add(g, "⏎", "Abrir en vim",
-                "Abre el archivo en el panel de vim y te lleva allí.",
-                lambda: self.open_in_vim(sel), ok=sel)
+        add(g, "⏎", "Abrir en vim",
+            "Abre el archivo en vim y te lleva allí. Si vim no está abierto, "
+            "lo abre (o vuelve a la sesión de vim que siga abierta).",
+            lambda: self.enter_vim(sel), ok=sel)
         add(g, "t", "Testear",
             "Norminette, libftTester con valgrind y las reglas del subject. "
             "En vim: F5.", lambda: self.test(sel), ok=sel)
@@ -573,6 +832,16 @@ class App:
             "pista.", lambda: self.run_on("nota", sel), ok=sel)
         add(g, "O", "Abrir la nota en Obsidian", "Cuenta como pista.",
             lambda: self.run_on("obsidian", sel), ok=sel)
+        attempt = self.attempts.get(sel)
+        add(g, "z", "Reanudar el cronómetro" if attempt and attempt[3]
+            else "Pausar el cronómetro",
+            "Congela el tiempo del intento (por ejemplo, para descansar); "
+            "pulsa otra vez para que siga contando.",
+            lambda: self.run_on("pausa", sel), ok=attempt)
+        add(g, "x", "Cancelar el cronómetro",
+            "Lo para y lo quita sin guardar el tiempo, hasta el próximo "
+            "intento. El archivo no se borra.",
+            lambda: self.cancel(sel), ok=attempt)
         add(g, "h", "Historial", "Todos sus resultados anteriores.",
             lambda: self.run_on("historial", sel), ok=sel)
         add(g, "v", "Versiones guardadas",
@@ -602,16 +871,26 @@ class App:
 
         g = "Menú"
         add(g, "c", "Limpiar la salida", "", self.clear_output)
-        add(g, "x", "Reiniciar el contador de sugerencias",
-            "No borra el historial.", self.reset_counter)
+        add(g, "0", "Poner a cero las sugerencias",
+            "Cuántas veces ha salido cada función (solo informativo). No "
+            "borra el historial ni los tiempos.", self.reset_counter)
+        add(g, "C", "Cambiar la paleta de colores",
+            f"Ahora: {self.palette}. Pasa a la siguiente: "
+            f"{' → '.join(PALETTES)}. Se recuerda para la próxima vez.",
+            self.next_palette)
         add(g, "?", "Ayuda", "Teclas y símbolos.", self.open_help)
         add(g, "q", "Salir", "", self.quit)
+        add(g, "Q", "Cerrar todo (vim y menú)",
+            "Guarda lo que tengas en vim y cierra vim y el menú a la vez. El "
+            "cronómetro se pausa hasta que vuelvas.", self.close_all,
+            ok=VIM_PANE)
         return acts
 
     def footer_keys(self):
         """Las pocas teclas que más se usan ahora mismo."""
         short = {"r": "sugerir", "n": "elegir", "E": "examen", "t": "test",
-                 "i": "pista", "m": "man", "s": "parar",
+                 "i": "pista", "m": "man", "s": "parar", "x": "cancelar",
+                 "z": "pausa",
                  "⏎": "abrir en vim"}
         if not self.sel_name:
             keys = ["r", "n", "E"]
@@ -619,7 +898,14 @@ class App:
             keys = ["⏎", "t", "m", "E"]
             short["E"] = "rendirse"
         else:
-            keys = ["⏎", "t", "i", "m", "r"]
+            keys = ["⏎", "t", "i", "m"]
+            attempt = self.attempts.get(self.sel_name)
+            if attempt:
+                keys += ["z", "x"]
+                if attempt[3]:
+                    short["z"] = "seguir"
+            else:
+                keys.append("r")
         if self.proc:
             keys.insert(0, "s")
         available = {a[1] for a in self.actions()}
@@ -629,6 +915,8 @@ class App:
     # ---------- dibujo ----------
 
     def put(self, y, x, text, attr=0, width=None):
+        if not self.focused:
+            attr |= curses.A_DIM    # sin foco, el menú se apaga
         h, w = self.scr.getmaxyx()
         if y < 0 or y >= h or x >= w:
             return
@@ -697,26 +985,29 @@ class App:
         curses.doupdate()
 
     def draw_title(self, w):
-        """Barra de título con el estilo de la cabecera de 42: /* … */"""
+        """Barra de título con el estilo de la cabecera de 42: /* … */
+        En color con el foco en el menú; apagada con el foco en vim."""
         bar = curses.A_REVERSE
-        self.put(0, 0, " " * w, bar)
-        self.put(0, 0, " /* libft · 43 */", bar | curses.A_BOLD)
+        head = bar | (self.attr(CYAN) if self.focused else curses.A_DIM)
+        self.put(0, 0, " " * w, head)
+        self.put(0, 0, " /* libft · 43 */" if self.focused
+                 else " /* libft · 43 */  (foco en vim)", head | curses.A_BOLD)
         parts = []
         exam = self.exam()
         if exam:
             parts.append((f" 📝 EXAMEN {exam[0]} "
-                          f"{fmt_time(int(time.time()) - exam[1])} ",
+                          f"{fmt_time(attempt_elapsed(self.attempts[exam[0]]))} ",
                           self.attr(RED, True) | bar))
         ready, total = self.ready
         if total:
             done = ready == total
             parts.append((" 🎯 ¡preparado! " if done
                           else f" 🎯 examen {ready}/{total} ",
-                          bar | self.attr(GREEN if done else 0, done)))
+                          bar | self.attr(GREEN, True) if done else head))
         if self.auto:
             parts.append((" auto-test ", self.attr(GREEN, True) | bar))
         if self.queue:
-            parts.append((f" cola: {len(self.queue)} ", bar))
+            parts.append((f" cola: {len(self.queue)} ", head))
         x = w
         for text, attr in reversed(parts):
             x -= text_width(text)
@@ -730,12 +1021,15 @@ class App:
         logo_w = max(text_width(line) for line in self.logo)
         for i, line in enumerate(self.logo):
             color = LOGO_COLORS[i] if i < len(LOGO_COLORS) else CYAN
-            self.put(top + i, 1, line,
-                     self.attr(color, i == len(self.logo) - 1), width - 2)
+            # Con el foco en vim, el «43» se apaga.
+            attr = (self.attr(color, i == len(self.logo) - 1)
+                    if self.focused else curses.A_DIM)
+            self.put(top + i, 1, line, attr, width - 2)
         x = logo_w + 3
         if width - x >= 12:
             s = self.states
-            side = [(1, "libft · 43", self.attr(CYAN, True)),
+            side = [(1, "libft · 43", self.attr(CYAN, True) if self.focused
+                     else curses.A_DIM),
                     (3, f"✔ {s.get('✔', 0):<3}dominadas", self.attr(GREEN)),
                     (4, f"⟳ {s.get('⟳', 0):<3}repasar", self.attr(YELLOW)),
                     (5, f"✘ {s.get('✘', 0):<3}con fallos", self.attr(RED)),
@@ -775,9 +1069,9 @@ class App:
             attempt = self.attempts.get(name)
             if attempt:
                 # Intento en marcha: cronómetro en vez del último resultado.
-                start_t, hints, exam = attempt
-                clock = ("📝 " if exam else "⏱ ") + \
-                    fmt_time(int(time.time()) - start_t)
+                exam, paused = attempt[2], attempt[3]
+                clock = ("⏸ " if paused else "📝 " if exam else "⏱ ") + \
+                    fmt_time(attempt_elapsed(attempt))
                 self.put(y, x, clock, base | self.attr(
                     RED if exam else YELLOW, True), left + width - x)
                 continue
@@ -802,9 +1096,10 @@ class App:
         attempt = self.attempts.get(name)
         info = self.hist.get(name)
         if attempt:
-            start, hints, exam = attempt
-            text = (f"{'📝 examen' if exam else '⏱ en marcha'}: "
-                    f"{fmt_time(int(time.time()) - start)} · "
+            _, hints, exam, paused = attempt
+            state = ("⏸ en pausa" if paused else
+                     "📝 examen" if exam else "⏱ en marcha")
+            text = (f"{state}: {fmt_time(attempt_elapsed(attempt))} · "
                     f"{'con pistas' if hints else 'sin pistas'}")
             if exam:
                 text += " (man sí)"
@@ -904,7 +1199,18 @@ class App:
             self.put(y, left + 2, line, curses.A_DIM, width - 3)
             y += 1
 
+    def job_text(self):
+        """El trabajo en marcha: «⠹ test ft_x · libftTester · 4s»."""
+        secs = int(time.time() - self.job_start)
+        spin = SPINNER[int(time.time() * 8) % len(SPINNER)]
+        step = f" · {self.step}" if self.step else ""
+        return f"{spin} {self.job_title}{step} · {secs}s"
+
     def draw_status(self, y, w):
+        if self.proc:
+            self.put(y, 0, " " + self.job_text(), self.attr(YELLOW, True),
+                     w - 1)
+            return
         if not self.status:
             return
         attr = 0
@@ -1015,7 +1321,7 @@ class App:
         lines += [("", 0), ("Símbolos", CYAN),
                   ("  ✔ último test perfecto · ✘ con fallos · · sin testear", 0),
                   ("  ● cambiado desde el último test", 0),
-                  ("  ⏱ intento en marcha · 📝 examen", 0),
+                  ("  ⏱ intento en marcha · ⏸ en pausa · 📝 examen", 0),
                   ("  ★ función clave para el examen · 🎯 cuántas tienes listas", 0),
                   ("", 0), ("Más detalles: ./libft_43.sh help", 0)]
         return lines[1:]
@@ -1188,8 +1494,6 @@ class App:
             self.mode = "acciones"
         elif name == "u":
             self.show_tip(None)     # tip de la última sugerida (atajo viejo)
-        elif VIM_PANE is None and name == "⏎" and self.sel_name:
-            self.test(self.sel_name)
         else:
             for _, k, _, _, fn in self.actions():
                 if k == name:
@@ -1201,6 +1505,8 @@ class App:
             while True:
                 self.poll_files()
                 self.check_job()
+                self.poll_focus()
+                self.update_titles()
                 self.draw()
                 key = self.scr.getch()
                 if key == -1 or key == curses.KEY_RESIZE:
@@ -1209,6 +1515,8 @@ class App:
                     break
         finally:
             self.stop_job()
+            if self.focus_written:
+                self.write_focus(None)      # sin menú, vim no se apaga
 
 
 def main(scr):
@@ -1225,6 +1533,13 @@ def main(scr):
 
 if __name__ == "__main__":
     os.environ.setdefault("ESCDELAY", "25")
+    # tmux anuncia «screen» (8 colores) aunque maneja 256: para las paletas.
+    if os.environ.get("TMUX") and os.environ.get("TERM") in ("screen", "tmux"):
+        for term in ("tmux-256color", "screen-256color"):
+            if subprocess.run(["infocmp", term],
+                              capture_output=True).returncode == 0:
+                os.environ["TERM"] = term
+                break
     # Si el locale del sistema no está instalado, usar uno UTF-8 genérico
     # para que los emojis y los ✔/✘ se vean bien.
     for loc in ("", "C.UTF-8", "en_US.UTF-8"):
