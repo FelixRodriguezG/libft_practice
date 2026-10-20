@@ -1,0 +1,15 @@
+# Datos de cada uno: historial, contadores e intentos.
+.libft_*
+intentos/
+
+# Tu configuración (rutas, email).
+config.sh
+
+# Tus archivos de práctica y la copia de libft.h para el editor.
+ft_*.c
+libft.h
+
+# Herramientas locales.
+.claude/
+__pycache__/
+*.swp
