@@ -26,6 +26,8 @@ preparado.
 - **Cronómetro** de cada intento: el tiempo hasta que el test sale
   perfecto, y si usaste pistas. Se puede pausar (`z`) o cancelar (`x`); solo
   hay uno a la vez.
+- **Tus propios tests:** un main por función en `mains/` (`B` lo abre,
+  `b` o `F8` lo compila con tu libft y lo ejecuta con valgrind).
 - **Pistas por niveles** sacadas de las [notas](notas/) (puntos clave,
   pseudocódigo, casos límite) y el `man` de cada función.
 - **Modo examen:** sin pistas (el man sí), con las funciones clave.
@@ -130,7 +132,7 @@ secciones necesita cada nota.
 libft_43/
 ├── libft_43.sh          el script: sugerir, testear, pistas, examen…
 ├── libft_tui.py         el menú (curses)
-├── libft_vim.vim        atajos de vim de la sesión (F5, F6, F7)
+├── libft_vim.vim        atajos de vim de la sesión (F5–F8)
 ├── config.example.sh    plantilla de config.sh
 ├── docs/manual.md       manual completo (./libft_43.sh help)
 ├── notas/               notas de Obsidian (bóveda)
@@ -139,7 +141,7 @@ libft_43/
 ```
 
 Lo que generas al practicar se queda en tu ordenador y no se sube (está en
-`.gitignore`): tus `ft_*.c`, `intentos/` (versiones anteriores de cada
+`.gitignore`): tus `ft_*.c`, tus `mains/`, `intentos/` (versiones anteriores de cada
 función), `config.sh` y los archivos `.libft_*` (historial, contadores e
 intentos en marcha). No se modifica nunca tu libft, ni libftTester, ni las
 notas: el test trabaja en una carpeta temporal.
@@ -152,7 +154,9 @@ notas: el test trabaja en una carpeta temporal.
 | `[1\|2\|3]` | Sugerir una función (de una parte o de todas) |
 | `examen [1\|2\|3]` / `rendirse` | Examen sin pistas / abandonarlo |
 | `new ft_xxx` | Crear el archivo de una función concreta |
+| `borrar ft_xxx` | Quitar un archivo (se guarda en `intentos/`) |
 | `test [ft_xxx…]` | Testear (sin nombres: todos los `ft_*.c`) |
+| `main [ft_xxx]` | Compilar y ejecutar tu main (`mains/main_ft_xxx.c`) |
 | `man`, `tip [2]`, `casos`, `nota`, `obsidian` `[ft_xxx]` | Man / pistas de las notas |
 | `preparado`, `progreso`, `historial`, `intentos` | Ver cómo vas |
 | `cabecera [ft_xxx…]` | Rehacer la cabecera «43» si el plugin de 42 la cambió |

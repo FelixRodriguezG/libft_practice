@@ -2,7 +2,8 @@
 " ./libft_43.sh menu (vim -S libft_vim.vim): tu .vimrc no cambia.
 "   F5  guarda y testea el archivo en el menú
 "   F6  tip de la función (F6 otra vez en el menú: el pseudocódigo)
-"   F7  man de la función original (o su ficha del subject)
+"   F7  man de la función original (o su nota, si no tiene man)
+"   F8  compila y ejecuta tu main (mains/main_ft_xxx.c)
 
 " Carpeta del script (expand('<sfile>') solo vale fuera de las funciones).
 let s:dir = expand('<sfile>:p:h')
@@ -55,6 +56,10 @@ set updatetime=3000
 function! s:AutoSave() abort
 	let l:file = expand('%:p')
 	if !&modified || l:file ==# '' || &readonly || &buftype !=# ''
+		return
+	endif
+	" Borrado fuera de vim (d en el menú): no se vuelve a crear.
+	if !filereadable(l:file) && get(b:, 'libft_mtime', -1) >= 0
 		return
 	endif
 	" La hora del archivo va por segundos: se mira también el contenido.
@@ -128,9 +133,10 @@ call timer_start(300, function('s:CheckFocus'), {'repeat': -1})
 let s:requests = s:dir . '/.libft_peticiones'
 
 function! s:Request(cmd) abort
-	let l:name = expand('%:t:r')
+	" Desde tu main (main_ft_xxx.c), la función es la de su nombre.
+	let l:name = substitute(expand('%:t:r'), '^main_', '', '')
 	if l:name !~# '^ft_'
-		echo 'Este archivo no es un ft_*.c'
+		echo 'Este archivo no es un ft_*.c ni un main_ft_*.c'
 		return
 	endif
 	call writefile([a:cmd . ' ' . l:name], s:requests, 'a')
@@ -143,3 +149,5 @@ nnoremap <silent> <F6> :call <SID>Request('tip')<CR>
 inoremap <silent> <F6> <Esc>:call <SID>Request('tip')<CR>
 nnoremap <silent> <F7> :call <SID>Request('man')<CR>
 inoremap <silent> <F7> <Esc>:call <SID>Request('man')<CR>
+nnoremap <silent> <F8> :update<CR>:call <SID>Request('main')<CR>
+inoremap <silent> <F8> <Esc>:update<CR>:call <SID>Request('main')<CR>

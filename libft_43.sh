@@ -9,7 +9,9 @@
 #   pausa [ft_xxx]: pausa el cronómetro del intento (otra vez: sigue).
 #   cancelar [ft_xxx]: quita el cronómetro sin guardar el tiempo.
 #   new ft_xxx: crea el archivo de una función concreta.
+#   borrar ft_xxx: quita ft_xxx.c (lo guarda en intentos/) y su cronómetro.
 #   test [ft_xxx ...]: norminette, libftTester y reglas del subject.
+#   main [ft_xxx]: compila y ejecuta tu propio main (mains/main_ft_xxx.c).
 #   tip [ft_xxx] [2]: puntos clave (2: pseudocódigo) de tus notas.
 #   nota | casos | obsidian [ft_xxx]: nota entera, casos límite, Obsidian.
 #   progreso: estado de las 43 funciones.
@@ -28,6 +30,8 @@ LAST="$SCRIPT_DIR/.libft_ultima"
 ATTEMPTS="$SCRIPT_DIR/.libft_intentos"
 AUTOPAUSE="$SCRIPT_DIR/.libft_autopausa"
 ARCHIVE_DIR="intentos"
+MAINS_DIR="mains"
+MAIN_TIMEOUT=10
 
 # Rutas y datos de cada uno. Los valores por defecto se cambian en
 # config.sh (copia de config.example.sh), que no se sube a git.
@@ -592,6 +596,17 @@ show_man() {
 		esac
 		return 0
 	fi
+	# Sin página de man: fuera del examen, el pseudocódigo y la nota de
+	# Obsidian (cuentan como pista). En examen, solo el subject.
+	if [ -z "$(exam_name)" ] && page=$(find_note "$name" 2> /dev/null); then
+		echo -e "\033[2m$name no existe en la libc (no tiene man): tu nota de Obsidian.\033[0m"
+		use_hint "$name"
+		echo -e "\033[1;36m🧩 Cómo implementar $name\033[0m"
+		show_note "$page" pseudo
+		echo -e "\n\033[1;36m📝 Nota de $name\033[0m"
+		show_note "$page" resto
+		return 0
+	fi
 	if [ ! -f "$SUBJECT_PDF" ] || ! command -v pdftotext > /dev/null; then
 		# Sin el PDF: las citas del subject de la nota de la función.
 		page=$(find_note "$name" 2> /dev/null) && {
@@ -728,7 +743,7 @@ find_note() {
 
 # Muestra una nota de Obsidian en la terminal, con colores. Modos:
 #   tip: resumen y puntos clave · pseudo: cómo implementarla
-#   full: la nota entera · casos: la sección $3 de la nota de casos límite
+#   full: la nota entera · resto: la nota sin el pseudocódigo · casos: la sección $3 de la nota de casos límite
 #   subject: prototipo y lo que dice el subject (vale en examen)
 show_note() {
 	local md=0
@@ -775,7 +790,8 @@ show_note() {
 		return s
 	}
 	function emit(s) {
-		if (mode == "full" || (mode == "casos" && incasos && !skip) \
+		if (mode == "full" || (mode == "resto" && section != "Cómo implementarla") \
+			|| (mode == "casos" && incasos && !skip) \
 			|| (mode == "tip" && (section == "resumen" || section ~ /^Puntos clave/)) \
 			|| (mode == "pseudo" && section == "Cómo implementarla") \
 			|| (mode == "subject" && section ~ /^(Prototipo|Requisitos del subject|Comportamiento según el subject)$/))
@@ -808,7 +824,7 @@ show_note() {
 	}
 	!quoted && /^# / {
 		section = "resumen"
-		if (mode == "full") print md ? line : "\033[1;36m" substr(line, 3) "\033[0m"
+		if (mode ~ /^(full|resto)$/) print md ? line : "\033[1;36m" substr(line, 3) "\033[0m"
 		next
 	}
 	!quoted && /^## / {
@@ -1104,6 +1120,75 @@ test_function() {
 	return 1
 }
 
+# Crea mains/main_ft_xxx.c con un main vacío para escribir tus pruebas.
+create_main() {
+	local main="$MAINS_DIR/main_$1.c"
+
+	mkdir -p "$MAINS_DIR"
+	cat > "$main" <<MAIN
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include "libft.h"
+
+/*
+** Tu main para $1:
+**   $2
+** Se compila con tu $1.c y el resto de tu libft.
+** Ejecutar: F8 en vim · b en el menú · ./libft_43.sh main $1
+*/
+
+int	main(void)
+{
+	printf("$1\\n");
+	return (0);
+}
+MAIN
+	echo -e "Creado: \033[1;35m$main\033[0m (escribe ahí tus pruebas)"
+}
+
+# Compila tu main (mains/main_ft_xxx.c) con ft_xxx.c y el resto de tu libft,
+# y lo ejecuta con valgrind. No cuenta para el historial ni el cronómetro.
+run_main() {
+	local name="$1" file="$1.c" main="$MAINS_DIR/main_$1.c" build status
+
+	[ -f "$file" ] || { echo -e "\033[1;31m$file no existe en $(pwd)\033[0m"; return 1; }
+	[ -f "$main" ] || { create_main "$name" "$(find_proto "$name")"; return 0; }
+
+	echo -e "\033[1;36m🔧 $main\033[0m"
+	build=$(mktemp -d)
+	cp "$LIBFT_DIR"/ft_*.c "$LIBFT_DIR/libft.h" "$build/"
+	cp "$file" "$build/"
+	step "compilar"
+	(
+		cd "$build" || exit 1
+		for src in ft_*.c; do
+			cc -Wall -Wextra -Werror -g -c "$src" -o "${src%.c}.o" || exit 2
+		done
+	) && cc -Wall -Wextra -g -I "$build" "$main" "$build"/ft_*.o -o "$build/a.out"
+	status=$?
+	step_done "compilar" $status
+	if [ $status -ne 0 ]; then
+		rm -rf "$build"
+		return 1
+	fi
+
+	# Sin step: la salida del main va antes de la línea con el resultado.
+	echo -e "\033[2m── salida ──\033[0m"
+	timeout "$MAIN_TIMEOUT" valgrind -q --leak-check=full --error-exitcode=99 \
+		"$build/a.out" < /dev/null
+	status=$?
+	echo
+	case $status in
+		0) step_done "ejecutar con valgrind" 0 "terminó con 0" ;;
+		99) step_done "ejecutar con valgrind" 1 "errores de valgrind (míralos arriba)" ;;
+		124) step_done "ejecutar con valgrind" 1 "más de ${MAIN_TIMEOUT}s: ¿bucle infinito?" ;;
+		*) step_done "ejecutar con valgrind" 1 "terminó con $status" ;;
+	esac
+	rm -rf "$build"
+	return $status
+}
+
 print_summary() {
 	local line passed=0
 
@@ -1331,6 +1416,21 @@ case "$1" in
 		rm -f "$AUTOPAUSE"      # una pausa tuya manda sobre la automática
 		attempt_pause "$name" ;;
 	autopausa) auto_pause "$2" ;;    # desde los hooks de tmux
+	borrar)
+		# Quita el archivo de práctica sin perderlo: va a intentos/, como al
+		# crearlo de nuevo. Se cancela su cronómetro; el historial se queda.
+		[ -z "$2" ] && { echo "Uso: $0 borrar ft_xxx"; exit 1; }
+		name=$(resolve_name "$2")
+		[ -f "$name.c" ] || { echo "$name.c no existe en $(pwd)."; exit 1; }
+		mkdir -p "$ARCHIVE_DIR"
+		saved="$ARCHIVE_DIR/${name}_$(date '+%Y%m%d-%H%M%S').c"
+		mv "$name.c" "$saved"
+		echo -e "🗑 $name.c borrado. Se guarda en \033[1;35m$saved\033[0m"
+		if [ -n "$(attempt_get "$name")" ]; then
+			attempt_del "$name"
+			echo "⏹ Cronómetro de $name cancelado: el tiempo no se guarda."
+		fi
+		echo -e "\033[2mEl historial no cambia. Tu main (si tienes) sigue en $MAINS_DIR/.\033[0m" ;;
 	cancelar)
 		name=$(resolve_name "$2") || exit 1
 		read -r _ start _ exam _ <<< "$(attempt_get "$name")"
@@ -1365,6 +1465,19 @@ case "$1" in
 		print_summary
 		exit $failed ;;
 	historial) show_history "$2" ;;
+	main)
+		check_setup || exit 1
+		name=$(resolve_name "$2") || exit 1
+		find_proto "$name" > /dev/null \
+			|| { echo -e "\033[1;31m$name no es una función de la libft\033[0m"; exit 1; }
+		run_main "$name" ;;
+	editar-main)
+		# Para el menú: crea el main si falta y escribe su ruta.
+		name=$(resolve_name "$2") || exit 1
+		find_proto "$name" > /dev/null || exit 1
+		[ -f "$MAINS_DIR/main_$name.c" ] \
+			|| create_main "$name" "$(find_proto "$name")" > /dev/null
+		echo "$MAINS_DIR/main_$name.c" ;;
 	new)
 		# Crea el archivo de una función concreta, sin contar como sugerencia.
 		[ -z "$2" ] && { echo "Uso: $0 new ft_xxx"; exit 1; }

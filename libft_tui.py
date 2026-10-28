@@ -73,8 +73,8 @@ CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 USE_COLOR = not os.environ.get("NO_COLOR")
 HIST_LINE = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d)\s+([✔✘])\s+(\S+)\s+(.*)$")
 
-# Peticiones que puede hacer vim (F5, F6, F7).
-VIM_REQUESTS = ("test", "tip", "man")
+# Peticiones que puede hacer vim (F5, F6, F7, F8).
+VIM_REQUESTS = ("test", "tip", "man", "main")
 
 # Por debajo de este ancho, todo va en una columna.
 STACK_BELOW = 100
@@ -346,6 +346,7 @@ class App:
         self.last_focus = 0
         self.titles = {}            # títulos de los paneles ya puestos
         self.last_test = ""         # último resultado de test (título de vim)
+        self.last_test_name = None  # su función, para quitarlo si se borra
         self.queue = []
         self.auto = False
         self.status = ""
@@ -395,6 +396,13 @@ class App:
             self.load_stats()
         if self.sel_name not in mtimes:
             self.sel_name = self.files[0] if self.files else None
+        # Archivo borrado: su último test ya no vale (ni en el título de vim
+        # ni en la barra de estado).
+        if self.last_test_name and self.last_test_name not in mtimes:
+            if self.status.startswith(self.last_test):
+                self.status = ""
+            self.last_test = ""
+            self.last_test_name = None
 
         for name, when in list(self.changed.items()):
             if now - when < SAVE_SETTLE:
@@ -404,7 +412,7 @@ class App:
                 self.enqueue(["test", name], f"auto-test {name}", test=name)
 
     def read_requests(self):
-        """Peticiones de vim (F5 test, F6 tip, F7 man)."""
+        """Peticiones de vim (F5 test, F6 tip, F7 man, F8 tu main)."""
         try:
             tmp = REQUESTS + ".leyendo"
             os.replace(REQUESTS, tmp)
@@ -424,6 +432,8 @@ class App:
                 self.test(name)
             elif cmd == "tip":
                 self.show_tip(name)
+            elif cmd == "main":
+                self.run_main(name)
             else:
                 self.enqueue(["man", name], f"man {name}")
 
@@ -557,10 +567,19 @@ class App:
             self.status = (f"✔ {self.job_title}: todo OK" if code == 0
                            else f"✘ {self.job_title}: hay fallos (míralos abajo)")
             self.last_test = self.status.split(" (")[0]
+            name = self.job_title.split()[-1]
+            self.last_test_name = name if name.startswith("ft_") else None
             if self.job_title.startswith("auto"):
                 notify(self.status)
                 if code != 0:
                     curses.beep()
+        elif self.job_title.startswith("borrar"):
+            self.status = f"{self.job_title}: hecho"
+            if code == 0:
+                self.after_delete(self.job_title.split()[-1])
+        elif self.job_title.startswith("main"):
+            self.status = (f"✔ {self.job_title}: terminó bien" if code == 0
+                           else f"✘ {self.job_title}: falló (míralo abajo)")
         else:
             self.status = f"{self.job_title}: hecho"
             # Archivo recién creado: abrirlo en vim para empezar.
@@ -588,6 +607,22 @@ class App:
     def test(self, name):
         self.enqueue(["test", name], f"test {name}", test=name)
 
+    def run_main(self, name):
+        """Compila y ejecuta tu main de name (la primera vez, lo crea)."""
+        self.enqueue(["main", name], f"main {name}")
+
+    def edit_main(self, name):
+        """Abre en vim tu main de name (mains/main_ft_xxx.c)."""
+        out = subprocess.run(["bash", SCRIPT, "editar-main", name],
+                             cwd=self.cwd, capture_output=True, text=True)
+        path = out.stdout.strip()
+        if out.returncode != 0 or not path:
+            self.status = f"✘ No he podido crear el main de {name}"
+        elif VIM_PANE:
+            self.open_in_vim(name, path=path)
+        else:
+            self.status = f"Tu main: {path} (b lo ejecuta)"
+
     def show_tip(self, name):
         """Tip de name; si es el mismo que el anterior, el pseudocódigo."""
         if name and self.last_tip == name:
@@ -604,23 +639,24 @@ class App:
         self.enqueue([cmd, name] if name else [cmd],
                      title or f"{cmd} {name or 'última sugerida'}")
 
-    def open_in_vim(self, name, reload=False):
-        """Abre name.c en el panel de vim y le pasa el foco. Con reload,
-        descarta lo que hubiera en vim (archivo recién creado). Si has
-        cerrado vim, vuelve a abrir su panel a la izquierda."""
+    def open_in_vim(self, name, reload=False, path=None, focus=True):
+        """Abre name.c (o path) en el panel de vim y le pasa el foco. Con
+        reload, descarta lo que hubiera en vim (archivo recién creado). Si
+        has cerrado vim, vuelve a abrir su panel a la izquierda."""
         if not VIM_PANE or not name:
             return
         if not vim_alive():
             self.reopen_vim(name)
             return
-        path = os.path.join(self.cwd, name + ".c").replace(" ", "\\ ")
+        path = os.path.join(self.cwd, path or name + ".c").replace(" ", "\\ ")
         cmd = f":hide edit{'!' if reload else ''} {path}"
         try:
             for keys in (["Escape"], ["-l", cmd], ["Enter"]):
                 subprocess.run(["tmux", "send-keys", "-t", VIM_PANE, *keys],
                                check=True, capture_output=True)
-            subprocess.run(["tmux", "select-pane", "-t", VIM_PANE],
-                           capture_output=True)
+            if focus:
+                subprocess.run(["tmux", "select-pane", "-t", VIM_PANE],
+                               capture_output=True)
         except (OSError, subprocess.CalledProcessError):
             self.status = "✘ No encuentro el panel de vim (¿lo has cerrado?)"
 
@@ -803,6 +839,28 @@ class App:
                  lambda: self.enqueue(["cancelar", name],
                                       f"cancelar {name}") or True)
 
+    def delete(self, name):
+        self.ask(f"¿Borrar {name}.c? Se guarda una copia en intentos/ y se "
+                 "cancela su cronómetro.",
+                 lambda: self.enqueue(["borrar", name],
+                                      f"borrar {name}") or True)
+
+    def after_delete(self, name):
+        """Vim deja el archivo borrado y pasa a otro (sin quitarte el foco
+        del menú)."""
+        rest = [f for f in self.files if f != name]
+        if not VIM_PANE or not vim_alive():
+            return
+        if rest:
+            self.open_in_vim(rest[0], focus=False)
+            return
+        try:
+            for keys in (["Escape"], ["-l", ":enew"], ["Enter"]):
+                subprocess.run(["tmux", "send-keys", "-t", VIM_PANE, *keys],
+                               capture_output=True)
+        except OSError:
+            pass
+
     def reset_counter(self):
         self.ask("¿Poner a cero las veces que ha salido cada función? "
                  "El historial y los tiempos no se tocan.",
@@ -865,9 +923,11 @@ class App:
         add(g, "t", "Testear",
             "Norminette, libftTester con valgrind y las reglas del subject. "
             "En vim: F5.", lambda: self.test(sel), ok=sel)
-        add(g, "m", "Man / subject",
-            "La página de man de la función original, o su ficha del "
-            "subject en las Partes 2 y 3. Permitido en examen. En vim: F7.",
+        add(g, "m", "Man / nota",
+            "La página de man de la función original. En las Partes 2 y 3 "
+            "(no tienen man), el pseudocódigo y su nota de Obsidian, que "
+            "cuentan como pista; en examen, solo su ficha del subject. En "
+            "vim: F7.",
             lambda: self.run_on("man", sel), ok=sel)
         add(g, "i", "Pseudocódigo" if sel and self.last_tip == sel
             else "Pista",
@@ -892,6 +952,19 @@ class App:
             "Lo para y lo quita sin guardar el tiempo, hasta el próximo "
             "intento. El archivo no se borra.",
             lambda: self.cancel(sel), ok=attempt)
+        add(g, "b", "Ejecutar tu main",
+            "Compila tu main (mains/main_ft_xxx.c) con este archivo y el "
+            "resto de tu libft y lo ejecuta con valgrind. La primera vez lo "
+            "crea vacío. No cuenta para el historial. En vim: F8.",
+            lambda: self.run_main(sel), ok=sel)
+        add(g, "B", "Editar tu main",
+            "Abre en vim tu main de esta función (lo crea si no existe). "
+            "Vuelve a tu ft_xxx.c con ⏎ en el menú o :b# en vim.",
+            lambda: self.edit_main(sel), ok=sel)
+        add(g, "d", "Borrar el archivo",
+            "Quita este ft_xxx.c de la lista. No se pierde: se guarda en "
+            "intentos/ (v para verlo). Se cancela su cronómetro; el "
+            "historial no cambia.", lambda: self.delete(sel), ok=sel)
         add(g, "h", "Historial", "Todos sus resultados anteriores.",
             lambda: self.run_on("historial", sel), ok=sel)
         add(g, "v", "Versiones guardadas",
@@ -1408,7 +1481,7 @@ class App:
                   ("  espacio  menú de acciones", 0)]
         if VIM_PANE:
             lines += [("", 0), ("En vim", CYAN),
-                      ("  F5 guardar y testear · F6 pista · F7 man", 0),
+                      ("  F5 guardar y testear · F6 pista · F7 man · F8 tu main", 0),
                       ("  Ctrl-b + flecha (o clic): cambiar de panel", 0),
                       ("  Mayús + arrastrar: seleccionar y copiar texto", 0)]
         lines += [("", 0), ("Símbolos", CYAN),

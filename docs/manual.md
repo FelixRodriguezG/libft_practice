@@ -16,7 +16,7 @@ del subject. Las pistas salen de tus notas de Obsidian.
 ./libft_43.sh [1|2|3]          # sugiere una función (de una parte o de todas)
 ./libft_43.sh examen [1|2|3]   # una función clave, sin pistas hasta resolverla
 ./libft_43.sh preparado        # ¿estás listo para el examen?
-./libft_43.sh man [ft_xxx]     # man de la original o ficha del subject
+./libft_43.sh man [ft_xxx]     # man de la original, o tu nota si no tiene man
 ./libft_43.sh rendirse         # abandona el examen
 ./libft_43.sh pausa [ft_xxx]   # pausa el cronómetro (otra vez: sigue)
 ./libft_43.sh cancelar [ft_xxx] # quita el cronómetro sin guardar el tiempo
@@ -69,7 +69,8 @@ que lo lanzas, igual que el script.
 |--------------|--------|
 | `F5` | Guarda y testea el archivo en el menú |
 | `F6` | Tip de la función (`F6` otra vez: el pseudocódigo) |
-| `F7` | Man de la función original (o su ficha del subject) |
+| `F7` | Man de la función original (o su nota, si no tiene man) |
+| `F8` | Guarda y ejecuta tu main (también desde `main_ft_xxx.c`) |
 
 - Para cambiar de panel: `Ctrl-b` y una flecha, o un clic (el ratón está
   activado en esta sesión). Con la rueda se desplaza la salida.
@@ -382,19 +383,59 @@ El veredicto es ✅ preparado (todas listas), 🟡 casi (al menos el 75 %) o
 
 ```bash
 ./libft_43.sh man memmove   # man 3 memmove
-./libft_43.sh man split     # la ficha de ft_split del subject
+./libft_43.sh man split     # pseudocódigo y nota de ft_split
 ```
 
 - Parte 1: la página de man de la función original (`memmove`, o `malloc`
   para `calloc`). Para `strlcpy`, `strlcat` y `strnstr` usa la de libbsd.
   En `ft_calloc` y `ft_is*` añade la regla del subject.
-- Partes 2 y 3: no tienen man, así que muestra su ficha del subject
+- Partes 2 y 3: no tienen man, así que muestra el pseudocódigo y después
+  el resto de su nota de Obsidian. **Cuenta como pista**, como `i` y `o`.
+- En **modo examen**, las Partes 2 y 3 muestran solo su ficha del subject
   (prototipo, parámetros, valor devuelto, funciones autorizadas y
   descripción), sacada del PDF (`SUBJECT_PDF` en `config.sh`, necesita
-  `pdftotext`). Sin el PDF, muestra el prototipo y las citas del subject
-  que hay en la nota de la función.
+  `pdftotext`). Sin el PDF, el prototipo y las citas del subject que hay
+  en la nota de la función.
 
-Se puede consultar en modo examen y no cuenta como pista.
+La página de man y la ficha del subject se pueden consultar en modo examen
+y no cuentan como pista.
+
+## Borrar un archivo
+
+```bash
+./libft_43.sh borrar memcpy   # o d en el menú (pide confirmación)
+```
+
+Quita `ft_memcpy.c` de la carpeta (y del menú) sin perderlo: se mueve a
+`intentos/ft_memcpy_AAAAMMDD-HHMMSS.c`. Se cancela su cronómetro sin
+guardar el tiempo. El historial no cambia y tu main (`mains/`) se queda.
+Si vim lo tenía abierto, pasa a otro archivo y no lo vuelve a crear al
+autoguardar.
+
+## Tu propio main
+
+```bash
+./libft_43.sh main memcpy   # la primera vez crea mains/main_ft_memcpy.c
+./libft_43.sh main memcpy   # lo compila y lo ejecuta
+```
+
+Para probar tus propios casos, además de libftTester. En el menú: **`B`**
+abre tu main en vim (lo crea si no existe) y **`b`** lo ejecuta; en vim,
+**`F8`** guarda y lo ejecuta, tanto desde `ft_memcpy.c` como desde
+`main_ft_memcpy.c` (vuelve al otro archivo con `:b#`).
+
+- El main empieza con `stdio.h`, `string.h`, `stdlib.h` y `libft.h`
+  incluidos, y el prototipo en un comentario. Puedes comparar con la
+  original (`memcpy`) y usar otras funciones de tu libft.
+- Se compila con tu `ft_memcpy.c` de práctica y el resto de tu libft
+  (`LIBFT_DIR`), en una carpeta temporal. Tu libft compila con `-Werror`;
+  el main solo con `-Wall -Wextra`, para que un aviso no te frene.
+- Se ejecuta con valgrind: verás fugas y accesos inválidos. Si tarda más de
+  10 s, se para (¿bucle infinito?).
+- No cuenta para el historial, el cronómetro ni las pistas. Los mains se
+  quedan en `mains/` (no se suben a git) y los puedes reutilizar.
+- ¿Ideas de casos? `e` (casos límite) enseña los que debes probar; la nota
+  de casos límite trae un main hecho por función (cuenta como pista).
 
 ## Pistas de tus notas de Obsidian
 
